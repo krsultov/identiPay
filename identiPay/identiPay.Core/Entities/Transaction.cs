@@ -2,18 +2,12 @@ namespace identiPay.Core.Entities;
 
 public class Transaction {
     public Guid Id { get; private set; }
-
     public string SenderDid { get; private set; }
-
     public TransactionPayload Payload { get; private set; } = null!;
     public Guid PayloadId { get; private set; }
-
     public TransactionStatus Status { get; private set; }
-
     public string Signature { get; private set; }
-
     public DateTimeOffset CreatedAt { get; private set; }
-
     public DateTimeOffset ModifiedAt { get; private set; }
 
     private Transaction(Guid id, string senderDid) {

@@ -9,4 +9,6 @@ public interface IUserService {
     Task<User?>? GetUserByIdAsync(Guid userId, CancellationToken cancellationToken = default);
 
     Task<User?> GetUserByDidAsync(string primaryDid, CancellationToken cancellationToken = default);
+
+    Task DeleteUserByIdAsync(Guid userId, CancellationToken cancellationToken = default);
 }

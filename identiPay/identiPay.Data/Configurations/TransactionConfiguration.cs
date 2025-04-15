@@ -21,6 +21,10 @@ public class TransactionConfiguration : IEntityTypeConfiguration<Transaction> {
         builder.Property(t => t.Signature)
             .HasColumnName("signature");
 
+        builder.Property(t => t.PayloadId)
+            .HasColumnName("payload_id")
+            .IsRequired();
+
         builder.Property(t => t.Status)
             .HasColumnName("status")
             .HasConversion<string>()
@@ -39,7 +43,7 @@ public class TransactionConfiguration : IEntityTypeConfiguration<Transaction> {
             .IsRequired();
 
         builder.HasOne(t => t.Payload)
-            .WithOne()
+            .WithOne(p => p.Transaction)
             .HasForeignKey<Transaction>(t => t.PayloadId);
     }
 }

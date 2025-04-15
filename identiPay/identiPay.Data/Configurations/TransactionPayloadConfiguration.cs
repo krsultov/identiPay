@@ -18,8 +18,14 @@ public class TransactionPayloadConfiguration : IEntityTypeConfiguration<Transact
             .HasColumnName("recipient_did")
             .IsRequired();
 
+        builder.Property(tp => tp.Currency)
+            .HasColumnName("currency")
+            .HasMaxLength(3)
+            .IsRequired();
+
         builder.Property(tp => tp.Amount)
             .HasColumnName("amount")
+            .HasPrecision(18, 8)
             .IsRequired();
 
         builder.Property(tp => tp.MetadataJson)

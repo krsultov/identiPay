@@ -47,4 +47,18 @@ public class UserService(IdentiPayDbContext dbContext, ILogger<UserService> logg
 
         return user;
     }
+
+    public async Task DeleteUserByIdAsync(Guid userId, CancellationToken cancellationToken = default) {
+        if (userId == Guid.Empty) return;
+
+        var user = await _dbContext.Users
+            .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+
+        if (user == null) return;
+
+        _dbContext.Users.Remove(user);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("User with ID {UserId} deleted.", userId);
+    }
 }
