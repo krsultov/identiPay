@@ -10,20 +10,22 @@ public class Transaction {
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset ModifiedAt { get; private set; }
 
-    private Transaction(Guid id, string senderDid) {
+    private Transaction(Guid id, string senderDid, Guid payloadId) {
         Id = id;
         SenderDid = senderDid;
+        PayloadId = payloadId;
         Status = TransactionStatus.Pending;
         Signature = string.Empty;
         CreatedAt = DateTimeOffset.UtcNow;
         ModifiedAt = CreatedAt;
     }
 
-    public static Transaction CreateNew(string senderDid) {
+    public static Transaction CreateNew(string senderDid, Guid payloadId) {
         if (string.IsNullOrWhiteSpace(senderDid))
             throw new ArgumentException("Sender DID cannot be null or whitespace.", nameof(senderDid));
+        if (payloadId == Guid.Empty) throw new ArgumentException("Payload Id cannot be null", nameof(payloadId));
 
-        return new Transaction(Guid.NewGuid(), senderDid);
+        return new Transaction(Guid.NewGuid(), senderDid, payloadId);
     }
 
     public void SetPayload(TransactionPayload payload) {

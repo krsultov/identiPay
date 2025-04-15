@@ -34,6 +34,13 @@ public class TransactionPayload {
 
         return new TransactionPayload(Guid.NewGuid(), type, recipientDid, amount, metadataJson, currency);
     }
+
+    public void SetTransaction(Transaction transaction) {
+        if (Transaction != null)
+            throw new InvalidOperationException("Payload transaction is already set.");
+
+        Transaction = transaction ?? throw new ArgumentNullException(nameof(transaction), "Transaction cannot be null.");
+    }
 }
 
 public enum TransactionType {
