@@ -3,7 +3,7 @@ using identiPay.Core.Entities;
 namespace identiPay.Core.Interfaces;
 
 public interface ITransactionService {
-    Task<Transaction> CreateTransactionOfferAsync(string senderDid, string recipientDid, TransactionType transactionType, decimal amount,
+    Task<Transaction> CreateTransactionOfferAsync(string recipientDid, TransactionType transactionType, decimal amount,
         string currency, string? metadataJson, CancellationToken cancellationToken = default);
 
     Task<Transaction?> GetTransactionByIdAsync(Guid transactionId, CancellationToken cancellationToken = default);

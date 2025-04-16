@@ -10,8 +10,7 @@ public class UserService(IdentiPayDbContext dbContext, ILogger<UserService> logg
     private readonly IdentiPayDbContext _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
     private readonly ILogger<UserService> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-    public async Task<User> CreateUserAsync(string primaryDid, string primaryPublicKey,
-        CancellationToken cancellationToken = default) {
+    public async Task<User> CreateUserAsync(string primaryDid, string primaryPublicKey, CancellationToken cancellationToken = default) {
         var existingUser = await _dbContext.Users
             .AsNoTracking()
             .FirstOrDefaultAsync(u => u.PrimaryDid == primaryDid, cancellationToken);

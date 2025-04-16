@@ -12,17 +12,20 @@ if (string.IsNullOrEmpty(connectionString)) throw new InvalidOperationException(
 
 builder.Services.AddDbContext<IdentiPayDbContext>(options =>
     options.UseNpgsql(connectionString,
-            npgsqlOptionsAction: sqlOptions => {
-                sqlOptions.MigrationsAssembly(typeof(IdentiPayDbContext).Assembly.FullName);
-            })
+            npgsqlOptionsAction: sqlOptions => { sqlOptions.MigrationsAssembly(typeof(IdentiPayDbContext).Assembly.FullName); })
         .UseSnakeCaseNamingConvention());
 
 
 // Add services to the container.
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options => {
+        options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.Preserve;
+        options.JsonSerializerOptions.WriteIndented = true;
+    });
 
 builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<ITransactionService, TransactionService>();
 
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();

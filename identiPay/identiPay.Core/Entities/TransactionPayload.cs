@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace identiPay.Core.Entities;
 
 public class TransactionPayload {
@@ -43,6 +45,7 @@ public class TransactionPayload {
     }
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum TransactionType {
     Payment,
     Transfer,

@@ -28,6 +28,11 @@ public class TransactionPayloadConfiguration : IEntityTypeConfiguration<Transact
             .HasPrecision(18, 8)
             .IsRequired();
 
+        builder.Property(tp => tp.Type)
+            .HasColumnName("type")
+            .HasConversion<string>()
+            .IsRequired();
+
         builder.Property(tp => tp.MetadataJson)
             .HasColumnName("metadata_json")
             .HasColumnType("jsonb");
