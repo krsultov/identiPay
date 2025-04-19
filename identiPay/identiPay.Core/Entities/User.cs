@@ -3,10 +3,8 @@ namespace identiPay.Core.Entities;
 public class User {
     public Guid Id { get; private set; }
 
-    public string PrimaryDid { get; private set; }
-
-    public string PrimaryPublicKey { get; private set; }
-
+    public IdentiPayDid? Did { get; private set; }
+    public Guid? DidId { get; private set; }
     public UserStatus Status { get; private set; }
 
     public string? MetadataJson { get; private set; }
@@ -15,23 +13,28 @@ public class User {
 
     public DateTimeOffset ModifiedAt { get; private set; }
 
-    private User(Guid id, string primaryDid, string primaryPublicKey, UserStatus status, string? metadataJson) {
+    private User(Guid id, UserStatus status, string? metadataJson) {
         Id = id;
-        PrimaryDid = primaryDid;
-        PrimaryPublicKey = primaryPublicKey;
         Status = status;
         MetadataJson = metadataJson;
         CreatedAt = DateTimeOffset.UtcNow;
         ModifiedAt = CreatedAt;
     }
 
-    public static User CreateNew(string primaryDid, string primaryPublicKey) {
-        if (string.IsNullOrWhiteSpace(primaryDid))
-            throw new ArgumentException("Primary DID cannot be null or whitespace.", nameof(primaryDid));
-        if (string.IsNullOrWhiteSpace(primaryPublicKey))
-            throw new ArgumentException("Primary Public Key cannot be null or whitespace.", nameof(primaryPublicKey));
+    public void SetDid(IdentiPayDid did) {
+        Did = did ?? throw new ArgumentNullException(nameof(did), "DID cannot be null.");
+        DidId = did.Id;
+    }
 
-        return new User(Guid.NewGuid(), primaryDid, primaryPublicKey, UserStatus.Pending, null);
+    public void SetStatus(UserStatus status) {
+        Status = status switch {
+            UserStatus.Active when Did == null => throw new InvalidOperationException("Cannot set status to Active without a DID."),
+            _ => status
+        };
+    }
+
+    public static User CreateNew() {
+        return new User(Guid.NewGuid(), UserStatus.Pending, null);
     }
 }
 

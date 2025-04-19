@@ -8,6 +8,7 @@ public class IdentiPayDbContext(DbContextOptions<IdentiPayDbContext> options) : 
     public DbSet<User> Users { get; set; } = null!;
     public DbSet<Transaction> Transactions { get; set; } = null!;
     public DbSet<TransactionPayload> TransactionPayloads { get; set; } = null!;
+    public DbSet<IdentiPayDid> Dids { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) {
         base.OnModelCreating(modelBuilder);

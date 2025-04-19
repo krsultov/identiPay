@@ -2,30 +2,32 @@ using identiPay.Core.Entities;
 using identiPay.Core.Interfaces;
 using identiPay.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace identiPay.Services;
 
-public class UserService(IdentiPayDbContext dbContext, ILogger<UserService> logger) : IUserService {
+public class UserService(IdentiPayDbContext dbContext, ILogger<UserService> logger, IDidService didService, IConfiguration configuration) : IUserService {
     private readonly IdentiPayDbContext _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
     private readonly ILogger<UserService> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    private readonly IDidService _didService = didService ?? throw new ArgumentNullException(nameof(didService));
+    private readonly IConfiguration _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
 
-    public async Task<User> CreateUserAsync(string primaryDid, string primaryPublicKey, CancellationToken cancellationToken = default) {
-        var existingUser = await _dbContext.Users
-            .AsNoTracking()
-            .FirstOrDefaultAsync(u => u.PrimaryDid == primaryDid, cancellationToken);
-
-        if (existingUser != null) {
-            _logger.LogWarning("User already exists: {PrimaryDid}", primaryDid);
-            throw new InvalidOperationException($"A user with DID '{primaryDid}' already exists.");
+    public async Task<User> CreateUserAsync(string primaryKey, CancellationToken cancellationToken = default) {
+        var hostname = _configuration["didHostname"];
+        if (string.IsNullOrWhiteSpace(hostname)) {
+            throw new InvalidOperationException("Hostname for DID registration is not configured.");
         }
 
-        var newUser = User.CreateNew(primaryDid, primaryPublicKey);
+        var newUser = User.CreateNew();
 
         await _dbContext.Users.AddAsync(newUser, cancellationToken);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        _logger.LogInformation("New User created: {UserId}", newUser.Id);
+        _logger.LogInformation("New Pending User created: {UserId}", newUser.Id);
+
+        await _didService.RegisterDidAsync(newUser.Id, primaryKey, hostname, cancellationToken);
+        _logger.LogInformation("New DID registered for user: {UserId}", newUser.Id);
         return newUser;
     }
 
@@ -38,11 +40,9 @@ public class UserService(IdentiPayDbContext dbContext, ILogger<UserService> logg
         return user;
     }
 
-    public async Task<User?> GetUserByDidAsync(string primaryDid, CancellationToken cancellationToken = default) {
-        if (string.IsNullOrWhiteSpace(primaryDid)) return null;
-
+    public async Task<User?> GetUserByDidAsync(IdentiPayDid userDid, CancellationToken cancellationToken = default) {
         var user = await _dbContext.Users
-            .FirstOrDefaultAsync(u => u.PrimaryDid == primaryDid, cancellationToken);
+            .FirstOrDefaultAsync(u => u.Did == userDid, cancellationToken);
 
         return user;
     }

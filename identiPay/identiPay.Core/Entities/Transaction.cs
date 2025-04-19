@@ -57,26 +57,19 @@ public class Transaction {
         if (status == Status)
             throw new InvalidOperationException("Transaction status is already set to the specified value.");
 
-        switch (status) {
-            case TransactionStatus.Pending:
-                throw new InvalidOperationException(
-                    "Cannot set transaction status to Pending after it has been modified.");
-            case TransactionStatus.Completed when string.IsNullOrWhiteSpace(SenderDid):
-                throw new InvalidOperationException(
-                    "Cannot set transaction status to Completed without a sender DID.");
-            case TransactionStatus.Completed when string.IsNullOrWhiteSpace(Signature):
-                throw new InvalidOperationException(
-                    "Cannot set transaction status to Completed without a valid signature.");
-            case TransactionStatus.Completed when Status != TransactionStatus.Pending:
-                throw new InvalidOperationException(
-                    "Cannot set transaction status to Completed unless it is currently Pending.");
-            case TransactionStatus.Failed when Status != TransactionStatus.Pending:
-                throw new InvalidOperationException(
-                    "Cannot set transaction status to Failed unless it is currently Pending.");
-            default:
-                Status = status;
-                break;
-        }
+        Status = status switch {
+            TransactionStatus.Pending =>
+                throw new InvalidOperationException("Cannot set transaction status to Pending after it has been modified."),
+            TransactionStatus.Completed when string.IsNullOrWhiteSpace(SenderDid) =>
+                throw new InvalidOperationException("Cannot set transaction status to Completed without a sender DID."),
+            TransactionStatus.Completed when string.IsNullOrWhiteSpace(Signature) =>
+                throw new InvalidOperationException("Cannot set transaction status to Completed without a valid signature."),
+            TransactionStatus.Completed when Status != TransactionStatus.Pending =>
+                throw new InvalidOperationException("Cannot set transaction status to Completed unless it is currently Pending."),
+            TransactionStatus.Failed when Status != TransactionStatus.Pending =>
+                throw new InvalidOperationException("Cannot set transaction status to Failed unless it is currently Pending."),
+            _ => status
+        };
     }
 }
 

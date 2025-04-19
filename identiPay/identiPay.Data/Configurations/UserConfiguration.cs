@@ -14,22 +14,14 @@ public class UserConfiguration : IEntityTypeConfiguration<User> {
             .HasColumnName("id")
             .ValueGeneratedOnAdd();
 
-        builder.Property(u => u.PrimaryDid)
-            .HasColumnName("primary_did")
-            .IsRequired();
-
-        builder.HasIndex(u => u.PrimaryDid)
-            .IsUnique();
-
-        builder.Property(u => u.PrimaryPublicKey)
-            .HasColumnName("primary_public_key")
-            .IsRequired();
-
         builder.Property(u => u.Status)
             .HasColumnName("status")
             .HasConversion<string>()
             .HasMaxLength(50)
             .IsRequired();
+
+        builder.Property(u => u.DidId)
+            .HasColumnName("did_id");
 
         builder.Property(u => u.MetadataJson)
             .HasColumnName("metadata_json")
@@ -45,5 +37,9 @@ public class UserConfiguration : IEntityTypeConfiguration<User> {
             .IsRequired()
             .ValueGeneratedOnAddOrUpdate()
             .HasDefaultValueSql("now() at time zone 'utc'");
+
+        builder.HasOne(u => u.Did)
+            .WithOne(d => d.User)
+            .HasForeignKey<User>(u => u.DidId);
     }
 }

@@ -1,4 +1,3 @@
-using System.Text.Json.Serialization;
 using identiPay.Core.Entities;
 using identiPay.Core.Interfaces;
 using Microsoft.AspNetCore.Mvc;

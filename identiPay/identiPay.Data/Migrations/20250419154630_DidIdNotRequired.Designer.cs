@@ -12,8 +12,8 @@ using identiPay.Data;
 namespace identiPay.Data.Migrations
 {
     [DbContext(typeof(IdentiPayDbContext))]
-    [Migration("20250415213354_TransactionRefactoring1")]
-    partial class TransactionRefactoring1
+    [Migration("20250419154630_DidIdNotRequired")]
+    partial class DidIdNotRequired
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -24,6 +24,45 @@ namespace identiPay.Data.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("identiPay.Core.Entities.IdentiPayDid", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now() at time zone 'utc'");
+
+                    b.Property<string>("Hostname")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("hostname");
+
+                    b.Property<DateTimeOffset>("ModifiedAt")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_at")
+                        .HasDefaultValueSql("now() at time zone 'utc'");
+
+                    b.Property<string>("PublicKey")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("public_key");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_di_ds");
+
+                    b.ToTable("DIDs", (string)null);
+                });
 
             modelBuilder.Entity("identiPay.Core.Entities.Transaction", b =>
                 {
@@ -112,8 +151,9 @@ namespace identiPay.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("recipient_did");
 
-                    b.Property<int>("Type")
-                        .HasColumnType("integer")
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("text")
                         .HasColumnName("type");
 
                     b.HasKey("Id")
@@ -135,6 +175,10 @@ namespace identiPay.Data.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("now() at time zone 'utc'");
 
+                    b.Property<Guid?>("DidId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("did_id");
+
                     b.Property<string>("MetadataJson")
                         .HasColumnType("jsonb")
                         .HasColumnName("metadata_json");
@@ -145,16 +189,6 @@ namespace identiPay.Data.Migrations
                         .HasColumnName("modified_at")
                         .HasDefaultValueSql("now() at time zone 'utc'");
 
-                    b.Property<string>("PrimaryDid")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("primary_did");
-
-                    b.Property<string>("PrimaryPublicKey")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("primary_public_key");
-
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -164,9 +198,9 @@ namespace identiPay.Data.Migrations
                     b.HasKey("Id")
                         .HasName("pk_users");
 
-                    b.HasIndex("PrimaryDid")
+                    b.HasIndex("DidId")
                         .IsUnique()
-                        .HasDatabaseName("ix_users_primary_did");
+                        .HasDatabaseName("ix_users_did_id");
 
                     b.ToTable("Users", (string)null);
                 });
@@ -181,6 +215,22 @@ namespace identiPay.Data.Migrations
                         .HasConstraintName("fk_transactions_transaction_payloads_payload_id");
 
                     b.Navigation("Payload");
+                });
+
+            modelBuilder.Entity("identiPay.Core.Entities.User", b =>
+                {
+                    b.HasOne("identiPay.Core.Entities.IdentiPayDid", "Did")
+                        .WithOne("User")
+                        .HasForeignKey("identiPay.Core.Entities.User", "DidId")
+                        .HasConstraintName("fk_users_di_ds_did_id");
+
+                    b.Navigation("Did");
+                });
+
+            modelBuilder.Entity("identiPay.Core.Entities.IdentiPayDid", b =>
+                {
+                    b.Navigation("User")
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("identiPay.Core.Entities.TransactionPayload", b =>
