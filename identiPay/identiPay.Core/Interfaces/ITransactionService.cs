@@ -11,7 +11,7 @@ public interface ITransactionService {
     Task<IEnumerable<Transaction>> GetTransactionsBySenderDidAsync(string senderDid,
         CancellationToken cancellationToken = default);
 
-    Task<Transaction> SignAndCompleteTransactionAsync(Guid transactionId, string signature,
+    Task<Transaction> SignAndCompleteTransactionAsync(Guid transactionId, string senderDid, string signature,
         CancellationToken cancellationToken = default);
 
     Task<Transaction> FailTransactionAsync(Guid transactionId, CancellationToken cancellationToken = default);

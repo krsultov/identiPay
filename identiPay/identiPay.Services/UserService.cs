@@ -35,6 +35,7 @@ public class UserService(IdentiPayDbContext dbContext, ILogger<UserService> logg
         if (userId == Guid.Empty) return null;
 
         var user = await _dbContext.Users
+            .Include(u => u.Did)
             .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
 
         return user;

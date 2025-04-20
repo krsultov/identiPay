@@ -15,7 +15,6 @@ builder.Services.AddDbContext<IdentiPayDbContext>(options =>
             npgsqlOptionsAction: sqlOptions => { sqlOptions.MigrationsAssembly(typeof(IdentiPayDbContext).Assembly.FullName); })
         .UseSnakeCaseNamingConvention());
 
-
 // Add services to the container.
 
 builder.Services.AddControllers()

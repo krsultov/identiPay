@@ -7,8 +7,8 @@ using Microsoft.Extensions.Logging;
 namespace identiPay.Services;
 
 public class DidService(IdentiPayDbContext dbContext, ILogger<DidService> logger) : IDidService {
-    private readonly IdentiPayDbContext _dbContext = dbContext;
-    private readonly ILogger<DidService> _logger = logger;
+    private readonly IdentiPayDbContext _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+    private readonly ILogger<DidService> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     public async Task<IdentiPayDid> RegisterDidAsync(Guid userId, string publicKey, string hostname, CancellationToken cancellationToken = default) {
         if (userId == Guid.Empty)
@@ -49,7 +49,26 @@ public class DidService(IdentiPayDbContext dbContext, ILogger<DidService> logger
         return newDid;
     }
 
-    public Task<IdentiPayDid> UpdateDidAsync(string did, string newPublicKey, CancellationToken cancellationToken = default) {
-        throw new NotImplementedException();
+    public async Task<IdentiPayDid> UpdateDidAsync(Guid didId, string newPublicKey, CancellationToken cancellationToken = default) {
+        if (didId == Guid.Empty)
+            throw new ArgumentException("DID ID cannot be null", nameof(didId));
+        if (string.IsNullOrWhiteSpace(newPublicKey))
+            throw new ArgumentException("New public key cannot be null or whitespace.", nameof(newPublicKey));
+
+        var existingDid = _dbContext.Dids
+            .FirstOrDefault(d => d.Id == didId);
+
+        if (existingDid == null) {
+            _logger.LogWarning("DID not found for DID ID {DidId}", didId);
+            throw new InvalidOperationException($"DID with ID '{didId}' not found.");
+        }
+
+        existingDid.SetPublicKey(newPublicKey);
+        _dbContext.Dids.Update(existingDid);
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("DID updated: {DidString} ", existingDid.ToDidString());
+        return existingDid;
     }
 }
