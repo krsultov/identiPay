@@ -1,6 +1,9 @@
 ﻿FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build-env
 WORKDIR /app
 
+RUN dotnet tool install --global dotnet-ef --version 9.0.0
+ENV PATH="${PATH}:/root/.dotnet/tools"
+
 COPY *.sln .
 COPY identiPay.Core/*.csproj ./identiPay.Core/
 COPY identiPay.Data/*.csproj ./identiPay.Data/
@@ -19,8 +22,9 @@ WORKDIR /app
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV ASPNETCORE_URLS=http://+:8080
 
-RUN dotnet tool install --global dotnet-ef --version 9.0.0
+COPY --from=build-env /root/.dotnet/tools /root/.dotnet/tools
 ENV PATH="${PATH}:/root/.dotnet/tools"
+
 
 COPY --from=build-env /app/publish .
 
