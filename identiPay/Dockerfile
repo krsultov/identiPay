@@ -19,6 +19,9 @@ WORKDIR /app
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV ASPNETCORE_URLS=http://+:8080
 
+RUN dotnet tool install --global dotnet-ef --version 9.0.0
+ENV PATH="${PATH}:/root/.dotnet/tools"
+
 COPY --from=build-env /app/publish .
 
 EXPOSE 8080
