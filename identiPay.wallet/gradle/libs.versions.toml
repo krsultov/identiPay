@@ -21,7 +21,10 @@ material = "1.12.0"
 navigationCompose = "2.8.9"
 okhttp = "4.12.0"
 retrofit = "2.9.0"
+roomCompiler = "2.7.0"
+roomKtx = "2.7.0"
 roomRuntime = "2.7.0"
+roomRuntimeVersion = "2.6.1"
 securityCrypto = "1.1.0-alpha07"
 zxingAndroidEmbedded = "4.3.0"
 biometricKtx = "1.1.0"
@@ -35,7 +38,10 @@ androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = 
 androidx-lifecycle-runtime-ktx-v270 = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtxVersion" }
 androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycleRuntimeKtxVersion" }
 androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigationCompose" }
+androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "roomCompiler" }
+androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "roomKtx" }
 androidx-room-runtime = { module = "androidx.room:room-runtime" }
+androidx-room-runtime-v261 = { module = "androidx.room:room-runtime", version.ref = "roomRuntimeVersion" }
 androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "securityCrypto" }
 converter-gson = { module = "com.squareup.retrofit2:converter-gson", version.ref = "converterGson" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }

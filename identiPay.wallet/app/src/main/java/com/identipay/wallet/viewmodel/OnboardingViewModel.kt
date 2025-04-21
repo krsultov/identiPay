@@ -1,9 +1,12 @@
 package com.identipay.wallet.viewmodel
 
 import android.os.Build
+import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.identipay.wallet.data.local.UserDao
+import com.identipay.wallet.data.local.UserDataEntity
 import com.identipay.wallet.security.KeyStoreManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,7 +24,8 @@ sealed class OnboardingState {
 }
 
 class OnboardingViewModel(
-    private val keyStoreManager: KeyStoreManager
+    private val keyStoreManager: KeyStoreManager,
+    private val userDao: UserDao
 ) : ViewModel() {
 
     private val keyAlias = "identipay_user_main_key"
@@ -58,8 +62,16 @@ class OnboardingViewModel(
             _onboardingState.value = OnboardingState.RegistrationInProgress
             try {
                 val fakeDid =
-                    "did:identiPay:api.example.com:${java.util.UUID.randomUUID()}"
+                    "did:identiPay:test.identipay.me:${java.util.UUID.randomUUID()}"
                 kotlinx.coroutines.delay(1500)
+
+                val userData = UserDataEntity(
+                    keystoreAlias = keyAlias,
+                    userDid = fakeDid,
+                    onboardingComplete = true
+                )
+                userDao.insertOrUpdateUserData(userData)
+                Log.d("OnboardingViewModel", "User data saved to Room DB.")
 
                 _onboardingState.value = OnboardingState.RegistrationComplete(fakeDid)
             } catch (e: Exception) {
