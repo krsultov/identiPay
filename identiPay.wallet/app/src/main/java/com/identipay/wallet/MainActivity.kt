@@ -10,7 +10,10 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
@@ -24,8 +27,14 @@ import com.identipay.wallet.ui.screens.RegistrationScreen
 import com.identipay.wallet.ui.screens.WalletDashboardScreen
 import com.identipay.wallet.ui.screens.WelcomeScreen
 import com.identipay.wallet.ui.theme.IdentiPayWalletTheme
+import com.identipay.wallet.viewmodel.DashboardViewModel
 import com.identipay.wallet.viewmodel.OnboardingViewModel
+import com.identipay.wallet.viewmodel.ViewModelFactory
 import kotlinx.coroutines.launch
+
+val LocalViewModelFactory = compositionLocalOf<ViewModelProvider.Factory> {
+    error("ViewModelFactory not provided")
+}
 
 class MainActivity : AppCompatActivity() {
 
@@ -54,7 +63,6 @@ class MainActivity : AppCompatActivity() {
         setContent {
             IdentiPayWalletTheme {
                 val navController = rememberNavController()
-                val onboardingViewModel: OnboardingViewModel = viewModel(factory = viewModelFactory)
 
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     NavHost(
@@ -68,19 +76,25 @@ class MainActivity : AppCompatActivity() {
                             WelcomeScreen(navController = navController)
                         }
                         composable(Routes.KEY_GENERATION) {
+                            val onboardingViewModel: OnboardingViewModel =
+                                viewModel(factory = viewModelFactory)
                             KeyGenerationScreen(
                                 navController = navController,
                                 viewModel = onboardingViewModel
                             )
                         }
                         composable(Routes.REGISTRATION) {
+                            val onboardingViewModel: OnboardingViewModel =
+                                viewModel(factory = viewModelFactory)
                             RegistrationScreen(
                                 navController = navController,
                                 viewModel = onboardingViewModel
                             )
                         }
                         composable(Routes.MAIN_WALLET) {
-                            WalletDashboardScreen()
+                            val dashboardViewModel: DashboardViewModel =
+                                viewModel(factory = viewModelFactory)
+                            WalletDashboardScreen(viewModel = dashboardViewModel)
                         }
                     }
                 }

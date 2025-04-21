@@ -1,10 +1,9 @@
-package com.identipay.wallet
+package com.identipay.wallet.viewmodel
 
 import android.content.Context
 import com.identipay.wallet.data.local.AppDatabase
 import com.identipay.wallet.network.RetrofitClient
 import com.identipay.wallet.security.KeyStoreManager
-import com.identipay.wallet.viewmodel.OnboardingViewModel
 
 class ViewModelFactory(
     private val applicationContext: Context,
@@ -17,10 +16,18 @@ class ViewModelFactory(
     private val apiService by lazy { RetrofitClient.instance }
 
     override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-        if (modelClass.isAssignableFrom(OnboardingViewModel::class.java)) {
-            @Suppress("UNCHECKED_CAST")
-            return OnboardingViewModel(keyStoreManager, userDao, apiService) as T
+        return when {
+            // Handle OnboardingViewModel
+            modelClass.isAssignableFrom(OnboardingViewModel::class.java) -> {
+                @Suppress("UNCHECKED_CAST")
+                OnboardingViewModel(keyStoreManager, userDao, apiService) as T
+            }
+            // Handle DashboardViewModel
+            modelClass.isAssignableFrom(DashboardViewModel::class.java) -> {
+                @Suppress("UNCHECKED_CAST")
+                DashboardViewModel(userDao) as T
+            }
+            else -> throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
         }
-        throw IllegalArgumentException("Unknown ViewModel class")
     }
 }
