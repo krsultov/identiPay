@@ -15,13 +15,19 @@ public class UserController(IUserService userService, ILogger<UserController> lo
         string PrimaryKey
     );
 
+    public record CreateUserResponse(
+        Guid UserId,
+        string UserDid
+    );
+
     [HttpPost]
-    [ProducesResponseType(typeof(Guid), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(CreateUserResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult<Guid>> CreateUser([FromBody] CreateUserRequest request, CancellationToken cancellationToken) {
+    public async Task<ActionResult<CreateUserResponse>> CreateUser([FromBody] CreateUserRequest request, CancellationToken cancellationToken) {
         try {
             var newUser = await _userService.CreateUserAsync(request.PrimaryKey, cancellationToken);
-            return CreatedAtAction(nameof(GetUserById), new { userId = newUser.Id }, newUser.Id);
+            var response = new CreateUserResponse(newUser.Id, newUser.Did!.ToDidString());
+            return CreatedAtAction(nameof(GetUserById), new { userId = newUser.Id }, response);
         }
         catch (ArgumentException ex) {
             _logger.LogWarning("Bad request creating user: {ErrorMessage}", ex.Message);
