@@ -23,4 +23,4 @@ COPY --from=build-env /app/publish .
 
 EXPOSE 8080
 
-ENTRYPOINT ["dotnet", "identiPayApi.dll"]
+ENTRYPOINT ["dotnet", "identiPay.Api.dll"]
