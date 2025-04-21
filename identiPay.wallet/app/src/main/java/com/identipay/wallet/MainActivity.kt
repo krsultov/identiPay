@@ -1,6 +1,5 @@
 package com.identipay.wallet
 
-import android.content.Context
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -19,31 +18,14 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.identipay.wallet.data.local.AppDatabase
 import com.identipay.wallet.navigation.Routes
+import com.identipay.wallet.security.KeyStoreManager
 import com.identipay.wallet.ui.screens.KeyGenerationScreen
-import com.identipay.wallet.ui.screens.WelcomeScreen
 import com.identipay.wallet.ui.screens.RegistrationScreen
 import com.identipay.wallet.ui.screens.WalletDashboardScreen
-import com.identipay.wallet.security.KeyStoreManager
-import com.identipay.wallet.viewmodel.OnboardingViewModel
+import com.identipay.wallet.ui.screens.WelcomeScreen
 import com.identipay.wallet.ui.theme.IdentiPayWalletTheme
+import com.identipay.wallet.viewmodel.OnboardingViewModel
 import kotlinx.coroutines.launch
-
-class ViewModelFactory(
-    private val applicationContext: Context,
-    private val keyStoreManager: KeyStoreManager
-) : androidx.lifecycle.ViewModelProvider.Factory {
-
-    private val database by lazy { AppDatabase.getDatabase(applicationContext) }
-    private val userDao by lazy { database.userDao() }
-
-    override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-        if (modelClass.isAssignableFrom(OnboardingViewModel::class.java)) {
-            @Suppress("UNCHECKED_CAST")
-            return OnboardingViewModel(keyStoreManager, userDao) as T
-        }
-        throw IllegalArgumentException("Unknown ViewModel class")
-    }
-}
 
 class MainActivity : AppCompatActivity() {
 
