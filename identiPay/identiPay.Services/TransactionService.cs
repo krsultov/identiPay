@@ -191,7 +191,7 @@ public class TransactionService(IdentiPayDbContext dbContext, ILogger<Transactio
         }
     }
 
-    private static byte[] PreparePayloadForSigning(TransactionPayload payload) {
+    private byte[] PreparePayloadForSigning(TransactionPayload payload) {
         var canonicalPayload = new {
             payload.Id,
             payload.Type,
@@ -206,6 +206,8 @@ public class TransactionService(IdentiPayDbContext dbContext, ILogger<Transactio
             WriteIndented = false,
             DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
         });
+
+        _logger.LogInformation("Prepared payload for signing: {JsonPayload}", jsonPayload);
 
         return Encoding.UTF8.GetBytes(jsonPayload);
     }
