@@ -22,7 +22,7 @@ data class PosScreenState(
     val currency: String = "EUR",
     val recipientDid: String = "did:identiPay:pos:merchant123",
     val transactionType: TransactionTypeDto = TransactionTypeDto.Payment,
-    val metadata: String = "POS test transaction",
+    val metadata: String = "",
     val qrCodeBitmap: Bitmap? = null,
     val statusMessage: String = "Enter amount and generate QR",
     val isLoading: Boolean = false,

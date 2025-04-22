@@ -16,15 +16,18 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.identipay.wallet.data.local.AppDatabase
 import com.identipay.wallet.navigation.Routes
 import com.identipay.wallet.security.KeyStoreManager
 import com.identipay.wallet.ui.screens.KeyGenerationScreen
 import com.identipay.wallet.ui.screens.RegistrationScreen
 import com.identipay.wallet.ui.screens.WalletDashboardScreen
+import com.identipay.wallet.ui.screens.WalletDestinations
 import com.identipay.wallet.ui.screens.WelcomeScreen
 import com.identipay.wallet.ui.theme.IdentiPayWalletTheme
 import com.identipay.wallet.viewmodel.DashboardViewModel
@@ -92,9 +95,24 @@ class MainActivity : AppCompatActivity() {
                             )
                         }
                         composable(Routes.MAIN_WALLET) {
-                            val dashboardViewModel: DashboardViewModel =
-                                viewModel(factory = viewModelFactory)
-                            WalletDashboardScreen(viewModel = dashboardViewModel)
+                            WalletDashboardScreen(navController = navController)
+                        }
+                        composable(
+                            route = WalletDestinations.routeWithArgs,
+                            arguments = listOf(navArgument(WalletDestinations.TRANSACTION_ID_ARG) { type = NavType.StringType })
+                        ) { backStackEntry ->
+                            val transactionId = backStackEntry.arguments?.getString(WalletDestinations.TRANSACTION_ID_ARG)
+                            if (transactionId != null) {
+                                TransactionConfirmScreen(
+                                    navController = navController,
+                                    transactionId = transactionId
+                                )
+                            } else {
+                                Text("Error: Transaction ID missing.")
+                                LaunchedEffect(Unit) {
+                                    navController.popBackStack()
+                                }
+                            }
                         }
                     }
                 }

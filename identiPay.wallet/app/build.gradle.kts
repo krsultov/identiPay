@@ -77,4 +77,6 @@ dependencies {
     implementation(libs.androidx.room.runtime.v261)
     ksp(libs.androidx.room.compiler)
     implementation(libs.androidx.room.ktx)
+
+    implementation(libs.zxing.android.embedded)
 }
