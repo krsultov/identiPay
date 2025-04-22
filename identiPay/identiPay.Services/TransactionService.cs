@@ -193,10 +193,10 @@ public class TransactionService(IdentiPayDbContext dbContext, ILogger<Transactio
 
     private byte[] PreparePayloadForSigning(TransactionPayload payload) {
         var canonicalPayload = new {
-            payload.Id,
-            payload.Type,
+            Id = payload.Id.ToString(),
+            Type = payload.Type.ToString(),
             payload.RecipientDid,
-            payload.Amount,
+            Amount = payload.Amount.ToString("G29"),
             payload.Currency,
             //payload.MetadataJson
         };
