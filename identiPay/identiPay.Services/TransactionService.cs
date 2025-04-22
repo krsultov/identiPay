@@ -196,7 +196,7 @@ public class TransactionService(IdentiPayDbContext dbContext, ILogger<Transactio
             Id = payload.Id.ToString(),
             Type = payload.Type.ToString(),
             payload.RecipientDid,
-            Amount = payload.Amount.ToString("G29"),
+            Amount = payload.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture),
             payload.Currency,
             //payload.MetadataJson
         };
