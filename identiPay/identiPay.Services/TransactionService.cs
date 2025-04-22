@@ -198,7 +198,7 @@ public class TransactionService(IdentiPayDbContext dbContext, ILogger<Transactio
             payload.RecipientDid,
             payload.Amount,
             payload.Currency,
-            payload.MetadataJson
+            //payload.MetadataJson
         };
 
         var jsonPayload = JsonSerializer.Serialize(canonicalPayload, new JsonSerializerOptions {
