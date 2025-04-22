@@ -13,12 +13,10 @@ class ViewModelFactory(
 ) : androidx.lifecycle.ViewModelProvider.Factory {
 
     private val database by lazy { AppDatabase.getDatabase(applicationContext) }
-    private val userDao by lazy { database.userDao() }
+    val userDao by lazy { database.userDao() }
 
-    private val apiService by lazy { RetrofitClient.instance }
+    val apiService by lazy { RetrofitClient.instance }
 
-    fun getApiService(): IdentiPayApiService = apiService
-    fun getUserDao(): UserDao = userDao
     fun getKeyStoreManager(): KeyStoreManager = keyStoreManager
 
     override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {

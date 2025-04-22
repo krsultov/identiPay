@@ -10,7 +10,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModelProvider
@@ -26,12 +25,15 @@ import com.identipay.wallet.navigation.Routes
 import com.identipay.wallet.security.KeyStoreManager
 import com.identipay.wallet.ui.screens.KeyGenerationScreen
 import com.identipay.wallet.ui.screens.RegistrationScreen
+import com.identipay.wallet.ui.screens.TransactionConfirmScreen
 import com.identipay.wallet.ui.screens.WalletDashboardScreen
 import com.identipay.wallet.ui.screens.WalletDestinations
 import com.identipay.wallet.ui.screens.WelcomeScreen
 import com.identipay.wallet.ui.theme.IdentiPayWalletTheme
 import com.identipay.wallet.viewmodel.DashboardViewModel
 import com.identipay.wallet.viewmodel.OnboardingViewModel
+import com.identipay.wallet.viewmodel.TransactionConfirmViewModel
+import com.identipay.wallet.viewmodel.TransactionConfirmViewModelFactory
 import com.identipay.wallet.viewmodel.ViewModelFactory
 import kotlinx.coroutines.launch
 
@@ -95,24 +97,24 @@ class MainActivity : AppCompatActivity() {
                             )
                         }
                         composable(Routes.MAIN_WALLET) {
-                            WalletDashboardScreen(navController = navController)
+                            val dashboardViewModel: DashboardViewModel = viewModel(factory = viewModelFactory)
+                            WalletDashboardScreen(navController = navController, viewModel = dashboardViewModel)
                         }
                         composable(
                             route = WalletDestinations.routeWithArgs,
                             arguments = listOf(navArgument(WalletDestinations.TRANSACTION_ID_ARG) { type = NavType.StringType })
                         ) { backStackEntry ->
                             val transactionId = backStackEntry.arguments?.getString(WalletDestinations.TRANSACTION_ID_ARG)
-                            if (transactionId != null) {
-                                TransactionConfirmScreen(
-                                    navController = navController,
-                                    transactionId = transactionId
-                                )
-                            } else {
-                                Text("Error: Transaction ID missing.")
-                                LaunchedEffect(Unit) {
-                                    navController.popBackStack()
-                                }
-                            }
+                                ?: throw IllegalArgumentException("Transaction ID not found in arguments")
+
+                            val txConfirmFactory = TransactionConfirmViewModelFactory(transactionId, viewModelFactory)
+                            val txConfirmViewModel: TransactionConfirmViewModel = viewModel(factory = txConfirmFactory)
+
+                            TransactionConfirmScreen(
+                                navController = navController,
+                                transactionId = transactionId,
+                                viewModel = txConfirmViewModel
+                            )
                         }
                     }
                 }

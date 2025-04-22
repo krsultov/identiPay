@@ -1,3 +1,5 @@
+package com.identipay.wallet.ui.screens
+
 import android.os.Build
 import android.util.Log
 import android.widget.Toast
@@ -39,33 +41,40 @@ fun TransactionConfirmScreen(
     val activity = LocalContext.current as? FragmentActivity
 
     val executor = remember { ContextCompat.getMainExecutor(context) }
+
     val biometricCallback = remember {
         object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                super.onAuthenticationError(errorCode, errString)
                 Log.e("ConfirmScreen", "Auth error: [$errorCode] $errString")
                 viewModel.handleAuthenticationFailure("Authentication error: $errString")
+                Toast.makeText(context, "Authentication Error: $errString", Toast.LENGTH_SHORT).show()
             }
 
             @RequiresApi(Build.VERSION_CODES.O)
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                super.onAuthenticationSucceeded(result)
                 Log.i("ConfirmScreen", "Auth succeeded!")
-                val signatureObject = result.cryptoObject?.signature
-
+                val currentLoadedState = viewModel.uiState.value as? TransactionConfirmState.OfferLoaded
                 viewModel.handleAuthenticationSuccess(
-                    signatureObject?.sign(),
-                    (viewModel.uiState.value as? TransactionConfirmState.OfferLoaded)?.transaction
+                    result.cryptoObject?.signature,
+                    currentLoadedState?.transaction
                 )
             }
 
             override fun onAuthenticationFailed() {
-                Log.w("ConfirmScreen", "Auth failed (wrong biometric)")
+                super.onAuthenticationFailed()
+                Log.w("ConfirmScreen", "Auth failed (e.g., wrong fingerprint)")
+                Toast.makeText(context, "Authentication Failed", Toast.LENGTH_SHORT).show()
                 viewModel.handleAuthenticationFailure("Authentication failed.")
             }
         }
     }
+
     val biometricPrompt = remember(activity, executor, biometricCallback) {
-        if (activity != null) BiometricPrompt(activity, executor, biometricCallback) else null
+        activity?.let { BiometricPrompt(it, executor, biometricCallback) }
     }
+
     val promptInfo = remember {
         BiometricPrompt.PromptInfo.Builder()
             .setTitle("Authenticate Transaction")
@@ -74,19 +83,22 @@ fun TransactionConfirmScreen(
             .build()
     }
 
-    val onApproveClick: () -> Unit = {
-        val currentState = viewModel.uiState.value
+    val onApproveClick: () -> Unit = Button@{
         if (activity == null || biometricPrompt == null) {
+            Log.e("ConfirmScreen", "Activity or BiometricPrompt is null. Cannot authenticate.")
             Toast.makeText(context, "Cannot initiate authentication.", Toast.LENGTH_SHORT).show()
             return@Button
         }
+
+        val currentState = viewModel.uiState.value
         if (currentState is TransactionConfirmState.OfferLoaded) {
             Log.d("ConfirmScreen", "Approve clicked. Preparing to sign.")
-            val dataToSign = viewModel.prepareSignatureData(currentState.transaction) ?: return@Button
+            if (!viewModel.prepareSignatureData(currentState.transaction)) {
+                Toast.makeText(context, "Error preparing transaction data.", Toast.LENGTH_SHORT).show()
+                return@Button
+            }
 
-            val signatureObject: Signature? = try {
-                viewModel.getInitializedSignatureForSigning()
-            } catch (e: Exception) { null }
+            val signatureObject: Signature? = viewModel.getInitializedSignatureForSigning()
 
             if (signatureObject != null) {
                 Log.d("ConfirmScreen", "Signature initialized. Showing prompt.")
@@ -94,10 +106,9 @@ fun TransactionConfirmScreen(
             } else {
                 Log.e("ConfirmScreen", "Failed to initialize Signature object.")
                 Toast.makeText(context, "Error preparing signature.", Toast.LENGTH_SHORT).show()
-                viewModel.handleAuthenticationFailure("Crypto Init Error")
             }
         } else {
-            Log.w("ConfirmScreen", "Approve clicked but transaction not loaded.")
+            Log.w("ConfirmScreen", "Approve clicked but transaction not in loaded state.")
             Toast.makeText(context, "Transaction details not loaded yet.", Toast.LENGTH_SHORT).show()
         }
     }
@@ -109,67 +120,79 @@ fun TransactionConfirmScreen(
         }
     }
 
+    Scaffold { paddingValues ->
+        Column(
+            modifier = Modifier.fillMaxSize().padding(paddingValues).padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                Text("Confirm Transaction", style = MaterialTheme.typography.headlineSmall)
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("Transaction ID: ${transactionId.take(8)}...")
+                Spacer(modifier = Modifier.height(24.dp))
 
-    Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Confirm Transaction", style = MaterialTheme.typography.headlineSmall)
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("Transaction ID: ${transactionId.take(8)}...")
-            Spacer(modifier = Modifier.height(24.dp))
-
-            when (val state = uiState) {
-                is TransactionConfirmState.Idle, TransactionConfirmState.Loading -> {
-                    CircularProgressIndicator()
-                    Text("Loading transaction details...")
-                }
-                is TransactionConfirmState.Error -> {
-                    Text("Error: ${state.message}", color = MaterialTheme.colorScheme.error)
-                    Button(onClick = { viewModel.loadTransactionDetails() }) { Text("Retry") }
-                }
-                is TransactionConfirmState.OfferLoaded -> {
-                    Text("Recipient DID: ${state.transaction.payload?.recipientDid ?: "N/A"}")
-                    Text("Amount: ${state.transaction.payload?.amount ?: 0.0} ${state.transaction.payload?.currency ?: "???"}")
-                    Text("Type: ${state.transaction.payload?.type ?: "Unknown"}")
-                    state.transaction.payload?.metadataJson?.let {
+                when (val state = uiState) {
+                    is TransactionConfirmState.Idle, TransactionConfirmState.Loading -> {
+                        CircularProgressIndicator()
+                        Text("Loading transaction details...")
+                    }
+                    is TransactionConfirmState.Error -> {
+                        Text("Error: ${state.message}", color = MaterialTheme.colorScheme.error)
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("Metadata: $it", style = MaterialTheme.typography.bodySmall)
+                        Button(onClick = { viewModel.loadTransactionDetails() }) { Text("Retry") }
+                    }
+                    is TransactionConfirmState.OfferLoaded -> {
+                        Text("Recipient DID:", style = MaterialTheme.typography.labelMedium)
+                        Text(state.transaction.payload?.recipientDid ?: "N/A", style = MaterialTheme.typography.bodyLarge)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Amount:", style = MaterialTheme.typography.labelMedium)
+                        Text("${state.transaction.payload?.amount ?: 0.0} ${state.transaction.payload?.currency ?: "???"}", style = MaterialTheme.typography.bodyLarge)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Type:", style = MaterialTheme.typography.labelMedium)
+                        Text(state.transaction.payload?.type ?: "Unknown", style = MaterialTheme.typography.bodyLarge)
+
+                        state.transaction.payload?.metadataJson?.let {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Metadata:", style = MaterialTheme.typography.labelMedium)
+                            Text(it, style = MaterialTheme.typography.bodySmall)
+                        }
                     }
                 }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                when (val signState = signingState) {
+                    SigningState.AwaitingAuthentication -> Text("Waiting for authentication...")
+                    SigningState.SigningInProgress -> { CircularProgressIndicator(); Text("Processing...") }
+                    is SigningState.SigningFailed -> Text("Failed: ${signState.message}", color = MaterialTheme.colorScheme.error)
+                    SigningState.SigningComplete -> Text("Complete!", color = Color(0xFF006400))
+                    SigningState.Idle -> { Box(modifier = Modifier.height(24.dp)) }
+                }
             }
 
-            when (val signState = signingState) {
-                SigningState.AwaitingAuthentication -> { Spacer(Modifier.height(16.dp)); Text("Waiting for authentication...") }
-                SigningState.SigningInProgress -> { Spacer(Modifier.height(16.dp)); CircularProgressIndicator(); Text("Processing...") }
-                is SigningState.SigningFailed -> { Spacer(Modifier.height(16.dp)); Text("Failed: ${signState.message}", color = MaterialTheme.colorScheme.error)}
-                SigningState.SigningComplete -> { Spacer(Modifier.height(16.dp)); Text("Complete!", color = Color(0xFF006400)) }
-                SigningState.Idle -> { }
-            }
-        }
-
-
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            val enableActions = uiState is TransactionConfirmState.OfferLoaded && signingState is SigningState.Idle
-
-            Button(
-                onClick = { navController.popBackStack() },
-                enabled = signingState !is SigningState.SigningInProgress && signingState !is SigningState.AwaitingAuthentication,
-                modifier = Modifier.weight(1f).padding(end = 8.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                Text("Reject")
-            }
-            Button(
-                onClick = onApproveClick, // Call the prepared lambda
-                enabled = enableActions, // Enable only when loaded and idle
-                modifier = Modifier.weight(1f).padding(start = 8.dp)
-            ) {
-                Text("Approve & Sign")
+                val actionsEnabled = uiState is TransactionConfirmState.OfferLoaded && signingState is SigningState.Idle
+                val rejectEnabled = signingState !is SigningState.SigningInProgress && signingState !is SigningState.AwaitingAuthentication
+
+                Button(
+                    onClick = { if(rejectEnabled) navController.popBackStack() },
+                    enabled = rejectEnabled,
+                    modifier = Modifier.weight(1f).padding(end = 8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                ) {
+                    Text("Reject")
+                }
+                Button(
+                    onClick = onApproveClick,
+                    enabled = actionsEnabled,
+                    modifier = Modifier.weight(1f).padding(start = 8.dp)
+                ) {
+                    Text("Approve & Sign")
+                }
             }
         }
     }

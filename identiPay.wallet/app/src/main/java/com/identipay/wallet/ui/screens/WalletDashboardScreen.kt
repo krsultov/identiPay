@@ -31,7 +31,7 @@ object WalletDestinations {
 @Composable
 fun WalletDashboardScreen(
     navController: NavController,
-    viewModel: DashboardViewModel = viewModel(factory = LocalViewModelFactory.current)
+    viewModel: DashboardViewModel
 ) {
     val userDid by viewModel.userDid.collectAsState()
     val context = LocalContext.current
@@ -96,8 +96,4 @@ fun WalletDashboardScreen(
             Text("Scan Payment QR Code")
         }
     }
-}
-
-val LocalViewModelFactory = compositionLocalOf<ViewModelProvider.Factory> {
-    error("ViewModelFactory not provided")
 }

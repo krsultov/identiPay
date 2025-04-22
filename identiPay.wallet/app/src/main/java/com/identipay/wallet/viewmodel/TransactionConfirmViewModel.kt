@@ -15,7 +15,12 @@ import androidx.annotation.RequiresApi
 import java.nio.charset.StandardCharsets
 import java.util.UUID
 import com.google.gson.GsonBuilder
-
+import java.math.RoundingMode
+import java.security.PrivateKey
+import java.security.Signature
+import java.text.DecimalFormat
+import java.text.DecimalFormatSymbols
+import java.util.Locale
 
 sealed class TransactionConfirmState {
     data object Idle : TransactionConfirmState()
@@ -70,8 +75,12 @@ class TransactionConfirmViewModel(
     private val _signingState = MutableStateFlow<SigningState>(SigningState.Idle)
     val signingState: StateFlow<SigningState> = _signingState.asStateFlow()
 
+    private var dataToSign: ByteArray? = null
+
     var signatureResult: String? = null
         private set
+
+    private val keyAlias = "identipay_user_main_key"
 
     init {
         loadTransactionDetails()
@@ -80,6 +89,9 @@ class TransactionConfirmViewModel(
     fun loadTransactionDetails() {
         viewModelScope.launch {
             _uiState.value = TransactionConfirmState.Loading
+            _signingState.value = SigningState.Idle
+            dataToSign = null
+            signatureResult = null
             try {
                 val transactionId = UUID.fromString(transactionIdString)
                 Log.d(TAG, "Fetching transaction details for ID: $transactionId")
@@ -90,13 +102,12 @@ class TransactionConfirmViewModel(
                     Log.d(TAG, "Transaction details loaded: ${transactionDto.id}, Status: ${transactionDto.status}")
                     if (transactionDto.payload == null) {
                         Log.e(TAG, "Transaction payload is null in response.")
-                        _uiState.value = TransactionConfirmState.Error("Payload data missing.")
-                    } else if (transactionDto.status != "Pending") {
+                        _uiState.value = TransactionConfirmState.Error("Payload data missing in transaction details.")
+                    } else if (transactionDto.status.equals("Pending", ignoreCase = true)) {
+                        _uiState.value = TransactionConfirmState.OfferLoaded(transactionDto)
+                    } else {
                         Log.w(TAG, "Transaction status is not Pending: ${transactionDto.status}")
                         _uiState.value = TransactionConfirmState.Error("Transaction is not pending (Status: ${transactionDto.status})")
-                    }
-                    else {
-                        _uiState.value = TransactionConfirmState.OfferLoaded(transactionDto)
                     }
                 } else {
                     val errorBody = response.errorBody()?.string() ?: "Unknown API error"
@@ -113,29 +124,98 @@ class TransactionConfirmViewModel(
         }
     }
 
-    fun prepareSignatureData(transactionDto: TransactionDto): ByteArray? {
+    fun prepareSignatureData(transactionDto: TransactionDto): Boolean {
         _signingState.value = SigningState.AwaitingAuthentication
-        try {
-            return preparePayloadForSigning(transactionDto.payload!!)
+        return try {
+            if (transactionDto.payload == null) {
+                throw IllegalStateException("Payload is null, cannot prepare data for signing.")
+            }
+            dataToSign = preparePayloadForSigningInternal(transactionDto.payload)
+            dataToSign != null
         } catch (e: Exception) {
             Log.e(TAG, "Error preparing payload for signing", e)
             _signingState.value = SigningState.SigningFailed("Payload prep error: ${e.message}")
+            dataToSign = null
+            false
+        }
+    }
+
+
+    fun getInitializedSignatureForSigning(): Signature? {
+        if(signingState.value !is SigningState.AwaitingAuthentication) {
+            Log.e(TAG,"Attempted to get signature object in wrong state: ${signingState.value}")
+            return null
+        }
+        if(dataToSign == null){
+            Log.e(TAG,"Attempted to get signature object but dataToSign is null.")
+            _signingState.value = SigningState.SigningFailed("Internal error: Missing data.")
+            return null
+        }
+
+        val privateKey: PrivateKey? = try {
+            keyStoreManager.getPrivateKeyEntry(keyAlias)?.privateKey
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get private key for signing init", e)
+            _signingState.value = SigningState.SigningFailed("Error getting private key.")
+            return null
+        }
+
+        if (privateKey == null) {
+            Log.e(TAG, "Private key is null for alias '$keyAlias'")
+            _signingState.value = SigningState.SigningFailed("Private key not found.")
+            return null
+        }
+
+        return try {
+            Signature.getInstance(KeyStoreManager.SIGNATURE_ALGORITHM).apply {
+                initSign(privateKey)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize Signature object", e)
+            _signingState.value = SigningState.SigningFailed("Crypto init error.")
             return null
         }
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
-    fun handleAuthenticationSuccess(signature: ByteArray?, transactionDto: TransactionDto?) {
+    fun handleAuthenticationSuccess(authenticatedSignature: Signature?, transactionFromState: TransactionDto?) {
         viewModelScope.launch {
-            if (signature == null) {
-                Log.w(TAG, "Authentication succeeded but signature was null.")
-                _signingState.value = SigningState.SigningFailed("Authentication succeeded but signature generation failed.")
+            if (transactionFromState == null) {
+                Log.e(TAG, "Cannot complete transaction: Transaction data missing after authentication.")
+                _signingState.value = SigningState.SigningFailed("Transaction data unavailable.")
+                return@launch
+            }
+            if (authenticatedSignature == null) {
+                Log.e(TAG, "Authenticated signature object was null in callback.")
+                _signingState.value = SigningState.SigningFailed("Authentication succeeded but signature object invalid.")
                 return@launch
             }
 
-            val signatureBase64Url = keyStoreManager.encodeSignatureBase64Url(signature)
+            val dataBytes = dataToSign
+            if (dataBytes == null) {
+                Log.e(TAG, "Data to sign was null after authentication.")
+                _signingState.value = SigningState.SigningFailed("Internal error: Missing data after auth.")
+                return@launch
+            }
+
+            val signatureBytes: ByteArray? = try {
+                authenticatedSignature.update(dataBytes)
+                authenticatedSignature.sign()
+            } catch (e: Exception) {
+                Log.e(TAG, "Signing failed AFTER authentication", e)
+                _signingState.value = SigningState.SigningFailed("Signing failed after authentication.")
+                null
+            } finally {
+                dataToSign = null
+            }
+
+            if (signatureBytes == null) {
+                return@launch
+            }
+
+            val signatureBase64Url = keyStoreManager.encodeSignatureBase64Url(signatureBytes)
             signatureResult = signatureBase64Url
-            Log.i(TAG, "Authentication successful, signature generated: ${signatureBase64Url.take(10)}...")
+            Log.i(TAG, "Signature generated: ${signatureBase64Url.take(10)}...")
             _signingState.value = SigningState.SigningInProgress
 
             val userData = userDao.getUserData()
@@ -147,44 +227,47 @@ class TransactionConfirmViewModel(
             val senderDid = userData.userDid
 
             try {
-                Log.d(TAG, "Calling signAndComplete API for Tx: ${transactionDto.id} by Sender: $senderDid")
+                Log.d(TAG, "Calling signAndComplete API for Tx: ${transactionFromState.id} by Sender: $senderDid")
                 val request = SignTransactionRequestDto(Signature = signatureBase64Url, SenderDid = senderDid)
-                val response = apiService.signAndCompleteTransaction(transactionDto.id, request)
+                val response = apiService.signAndCompleteTransaction(transactionFromState.id, request)
 
-                if (response.isSuccessful) {
+                if (response.isSuccessful && response.body() != null) {
                     Log.i(TAG, "Transaction successfully signed and completed on backend.")
                     _signingState.value = SigningState.SigningComplete
-                    // update UI state ?
                 } else {
                     val errorBody = response.errorBody()?.string() ?: "Unknown API error"
                     Log.e(TAG, "API Error completing transaction: ${response.code()} - $errorBody")
                     _signingState.value = SigningState.SigningFailed("API Error: ${response.code()}")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error completing transaction", e)
+                Log.e(TAG, "Error calling complete transaction API", e)
                 _signingState.value = SigningState.SigningFailed("Network/Server Error: ${e.message}")
             }
         }
     }
 
     fun handleAuthenticationFailure(errorMessage: String) {
-        _signingState.value = SigningState.SigningFailed(errorMessage)
+        if (_signingState.value == SigningState.AwaitingAuthentication) {
+            _signingState.value = SigningState.SigningFailed(errorMessage)
+        }
+        dataToSign = null
     }
 
+    private fun preparePayloadForSigningInternal(payloadDto: TransactionPayloadDto): ByteArray {
+        val symbols = DecimalFormatSymbols(Locale.US)
 
-    private fun preparePayloadForSigning(payloadDto: TransactionPayloadDto): ByteArray {
+        val decimalFormat = DecimalFormat("0.00000000", symbols)
+        decimalFormat.roundingMode = RoundingMode.UNNECESSARY
+
         val canonicalPayloadMap = linkedMapOf<String, Any?>()
         canonicalPayloadMap["Id"] = payloadDto.id.toString()
         canonicalPayloadMap["Type"] = payloadDto.type
         canonicalPayloadMap["RecipientDid"] = payloadDto.recipientDid
-        canonicalPayloadMap["Amount"] = payloadDto.amount.toBigDecimal().toPlainString()
+        canonicalPayloadMap["Amount"] = decimalFormat.format(payloadDto.amount.toBigDecimal())
         canonicalPayloadMap["Currency"] = payloadDto.currency
-        canonicalPayloadMap["MetadataJson"] = payloadDto.metadataJson
+        //canonicalPayloadMap["MetadataJson"] = payloadDto.metadataJson
 
-        val gson = GsonBuilder()
-            .disableHtmlEscaping()
-            .create()
-
+        val gson = GsonBuilder().disableHtmlEscaping().create()
         val jsonPayloadString = gson.toJson(canonicalPayloadMap)
         Log.d(TAG, "Canonical JSON for signing: $jsonPayloadString")
         return jsonPayloadString.toByteArray(StandardCharsets.UTF_8)

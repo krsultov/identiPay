@@ -13,8 +13,8 @@ class TransactionConfirmViewModelFactory(
             @Suppress("UNCHECKED_CAST")
             return TransactionConfirmViewModel(
                 transactionIdString = transactionId,
-                apiService = mainFactory.getApiService(),
-                userDao = mainFactory.getUserDao(),
+                apiService = baseFactory.apiService,
+                userDao = baseFactory.userDao,
                 keyStoreManager = mainFactory.getKeyStoreManager()
             ) as T
         }
