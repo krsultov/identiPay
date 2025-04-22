@@ -115,8 +115,7 @@ public class TransactionService(IdentiPayDbContext dbContext, ILogger<Transactio
 
             byte[] signatureBytes;
             try {
-                // Assume Base64 encoding for signature string
-                signatureBytes = Convert.FromBase64String(signature);
+                signatureBytes = Base64UrlDecode(signature);
             }
             catch (FormatException ex) {
                 _logger.LogWarning("Invalid Base64Url format for signature on transaction {TransactionId}", transactionId);
@@ -249,6 +248,25 @@ public class TransactionService(IdentiPayDbContext dbContext, ILogger<Transactio
         }
         finally {
             ecdsa?.Dispose();
+        }
+    }
+
+    private static byte[] Base64UrlDecode(string input) {
+        var output = input;
+        output = output.Replace('-', '+');
+        output = output.Replace('_', '/');
+        switch (output.Length % 4) {
+            case 0: break;
+            case 2: output += "=="; break;
+            case 3: output += "="; break;
+            default: throw new FormatException("Illegal base64url string!");
+        }
+
+        try {
+            return Convert.FromBase64String(output);
+        }
+        catch (FormatException e) {
+            throw new FormatException("Failed to decode base64url string after padding.", e);
         }
     }
 }
