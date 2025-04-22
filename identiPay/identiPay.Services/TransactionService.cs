@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -196,7 +197,7 @@ public class TransactionService(IdentiPayDbContext dbContext, ILogger<Transactio
             Id = payload.Id.ToString(),
             Type = payload.Type.ToString(),
             payload.RecipientDid,
-            Amount = payload.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Amount = payload.Amount.ToString("F8", CultureInfo.InvariantCulture),
             payload.Currency,
             //payload.MetadataJson
         };
