@@ -38,7 +38,6 @@ public class Transaction {
 
     public void SetSenderDid(string senderDid) {
         if (Status != TransactionStatus.Pending) throw new InvalidOperationException("Transaction must be Pending to set a sender DID.");
-        if (!string.IsNullOrWhiteSpace(senderDid)) throw new InvalidOperationException("Sender DID is already set.");
 
         SenderDid = senderDid;
     }
