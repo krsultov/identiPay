@@ -1,5 +1,6 @@
 package com.identipay.identipaypos
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -9,7 +10,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -23,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.identipay.identipaypos.ui.theme.IdentiPayPOSTheme
 import com.identipay.identipaypos.viewmodel.PosViewModel
+import java.util.UUID
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,6 +45,17 @@ class MainActivity : ComponentActivity() {
 fun PosAppScreen(viewModel: PosViewModel = viewModel()) {
 
     val uiState by viewModel.uiState
+    val previousPollingTxIdState = remember { mutableStateOf<UUID?>(null) }
+
+    LaunchedEffect(uiState.pollingTransactionId) {
+        val currentTxId = uiState.pollingTransactionId
+        if (currentTxId != null && currentTxId != previousPollingTxIdState.value) {
+            Log.d("PosAppScreen", "Detected new transaction offer ID, starting polling: $currentTxId")
+            viewModel.startPolling(currentTxId)
+            previousPollingTxIdState.value = currentTxId
+        }
+    }
+
 
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
         Column(
@@ -72,11 +88,11 @@ fun PosAppScreen(viewModel: PosViewModel = viewModel()) {
             Spacer(modifier = Modifier.height(16.dp))
 
             Button(
+                enabled = !uiState.isLoading && !uiState.isPolling,
                 onClick = viewModel::generatePaymentOfferQr,
-                enabled = !uiState.isLoading,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Generate Payment Request QR")
+                Text(if (uiState.isPolling) "Polling Active..." else "Generate Payment Request QR")
             }
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -104,7 +120,12 @@ fun PosAppScreen(viewModel: PosViewModel = viewModel()) {
             Text(
                 text = uiState.statusMessage,
                 style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                color = when (uiState.finalTransactionStatus) {
+                    "Completed" -> Color(0xFF006400)
+                    "Failed" -> MaterialTheme.colorScheme.error
+                    else -> LocalContentColor.current
+                }
             )
 
             uiState.errorMessage?.let { error ->
