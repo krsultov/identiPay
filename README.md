@@ -19,8 +19,7 @@
 </table>
 
 IdentiPay is a next-generation payment network prototype designed to address the fundamental security, privacy, and user
-control limitations of traditional card-based systems. By leveraging the principles of **Self-Sovereign Identity (SSI)
-**, IdentiPay empowers users with true ownership of their digital identity and financial credentials, enabling secure,
+control limitations of traditional card-based systems. By leveraging the principles of **Self-Sovereign Identity (SSI)**, IdentiPay empowers users with true ownership of their digital identity and financial credentials, enabling secure,
 private, and seamless transactions directly via a secure and convenient mobile wallet.
 
 Forget sharing vulnerable card numbers. With IdentiPay, you **pay with your identity**.
