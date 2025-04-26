@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">IdentiPayPOS</string>
+    <string name="servicedesc">identiPay apdu host</string>
+    <string name="aiddescription">identipay AID</string>
 </resources>

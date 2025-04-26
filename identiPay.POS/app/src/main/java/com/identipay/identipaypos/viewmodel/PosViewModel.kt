@@ -31,6 +31,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import java.util.UUID
 import androidx.core.graphics.scale
+import com.identipay.identipaypos.nfc.ActiveTransactionHolder
 
 data class PosScreenState(
     val amount: String = "",
@@ -129,6 +130,8 @@ class PosViewModel(
                     val qrBitmap = generateQrBitmap(transactionId)
 
                     if (qrBitmap != null) {
+                        ActiveTransactionHolder.currentTransactionId = transactionId
+
                         _uiState.value = _uiState.value.copy(
                             isLoading = false,
                             qrCodeBitmap = qrBitmap,
@@ -226,6 +229,7 @@ class PosViewModel(
 
     fun stopPolling() {
         pollingJob?.cancel()
+        ActiveTransactionHolder.currentTransactionId = null
         _uiState.value = _uiState.value.copy(isPolling = false, pollingTransactionId = null)
         Log.d(TAG, "Polling manually stopped.")
     }
