@@ -12,7 +12,6 @@ import androidx.compose.material3.Button
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -122,40 +121,76 @@ fun TransactionConfirmScreen(
 
     Scaffold { paddingValues ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(paddingValues).padding(16.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                Text("Confirm Transaction", style = MaterialTheme.typography.headlineSmall)
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    "Confirm Transaction",
+                    style = MaterialTheme.typography.headlineMedium
+                )
                 Spacer(modifier = Modifier.height(16.dp))
-                Text("Transaction ID: ${transactionId.take(8)}...")
+                Text(
+                    "Transaction ID: ${transactionId.take(8)}...",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Spacer(modifier = Modifier.height(24.dp))
 
                 when (val state = uiState) {
                     is TransactionConfirmState.Idle, TransactionConfirmState.Loading -> {
                         CircularProgressIndicator()
+                        Spacer(modifier = Modifier.height(8.dp))
                         Text("Loading transaction details...")
                     }
                     is TransactionConfirmState.Error -> {
-                        Text("Error: ${state.message}", color = MaterialTheme.colorScheme.error)
+                        Text(
+                            "Error: ${state.message}",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
-                        Button(onClick = { viewModel.loadTransactionDetails() }) { Text("Retry") }
+                        Button(onClick = { viewModel.loadTransactionDetails() }) {
+                            Text("Retry")
+                        }
                     }
                     is TransactionConfirmState.OfferLoaded -> {
-                        Text("Recipient DID:", style = MaterialTheme.typography.labelMedium)
-                        Text(state.transaction.payload?.recipientDid ?: "N/A", style = MaterialTheme.typography.bodyLarge)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Amount:", style = MaterialTheme.typography.labelMedium)
-                        Text("${state.transaction.payload?.amount ?: 0.0} ${state.transaction.payload?.currency ?: "???"}", style = MaterialTheme.typography.bodyLarge)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Type:", style = MaterialTheme.typography.labelMedium)
-                        Text(state.transaction.payload?.type ?: "Unknown", style = MaterialTheme.typography.bodyLarge)
-
-                        state.transaction.payload?.metadataJson?.let {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text("Metadata:", style = MaterialTheme.typography.labelMedium)
-                            Text(it, style = MaterialTheme.typography.bodySmall)
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                            elevation = CardDefaults.cardElevation(4.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text("Recipient DID:", style = MaterialTheme.typography.labelMedium)
+                                Text(
+                                    state.transaction.payload?.recipientDid ?: "N/A",
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                Text("Amount:", style = MaterialTheme.typography.labelMedium)
+                                Text(
+                                    "${state.transaction.payload?.amount ?: 0.0} ${state.transaction.payload?.currency ?: "???"}",
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                Text("Type:", style = MaterialTheme.typography.labelMedium)
+                                Text(
+                                    state.transaction.payload?.type ?: "Unknown",
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                state.transaction.payload?.metadataJson?.let {
+                                    Text("Metadata:", style = MaterialTheme.typography.labelMedium)
+                                    Text(it, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
                         }
                     }
                 }
@@ -164,22 +199,34 @@ fun TransactionConfirmScreen(
 
                 when (val signState = signingState) {
                     SigningState.AwaitingAuthentication -> Text("Waiting for authentication...")
-                    SigningState.SigningInProgress -> { CircularProgressIndicator(); Text("Processing...") }
-                    is SigningState.SigningFailed -> Text("Failed: ${signState.message}", color = MaterialTheme.colorScheme.error)
-                    SigningState.SigningComplete -> Text("Complete!", color = Color(0xFF006400))
-                    SigningState.Idle -> { Box(modifier = Modifier.height(24.dp)) }
+                    SigningState.SigningInProgress -> {
+                        CircularProgressIndicator()
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Processing...")
+                    }
+                    is SigningState.SigningFailed -> Text(
+                        "Failed: ${signState.message}",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    SigningState.SigningComplete -> Text(
+                        "Complete!",
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    SigningState.Idle -> Box(modifier = Modifier.height(24.dp))
                 }
             }
 
             Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 val actionsEnabled = uiState is TransactionConfirmState.OfferLoaded && signingState is SigningState.Idle
                 val rejectEnabled = signingState !is SigningState.SigningInProgress && signingState !is SigningState.AwaitingAuthentication
 
                 Button(
-                    onClick = { if(rejectEnabled) navController.popBackStack() },
+                    onClick = { if (rejectEnabled) navController.popBackStack() },
                     enabled = rejectEnabled,
                     modifier = Modifier.weight(1f).padding(end = 8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)

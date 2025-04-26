@@ -17,6 +17,10 @@ import com.identipay.wallet.viewmodel.OnboardingViewModel
 fun RegistrationScreen(navController: NavController, viewModel: OnboardingViewModel) {
     val state by viewModel.onboardingState.collectAsState()
 
+    LaunchedEffect(state) {
+        println("Current state in RegistrationScreen: $state")
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()

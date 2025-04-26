@@ -6,6 +6,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import android.util.Log
+import androidx.compose.foundation.Image
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -14,13 +15,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.identipay.wallet.viewmodel.DashboardViewModel
 import androidx.compose.foundation.layout.*
-import androidx.compose.runtime.compositionLocalOf
-import androidx.lifecycle.ViewModelProvider
-
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import com.identipay.wallet.R
 
 object WalletDestinations {
     const val TRANSACTION_CONFIRM_ROUTE = "transaction_confirm"
@@ -57,10 +57,13 @@ fun WalletDashboardScreen(
         verticalArrangement = Arrangement.Top,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            text = "IdentiPay Wallet",
-            style = MaterialTheme.typography.headlineMedium
+        Image(
+            painter = painterResource(id = R.drawable.identipay_logo),
+            contentDescription = "identiPay Logo",
+            modifier = Modifier.width(220.dp).height(120.dp),
+            contentScale = ContentScale.Fit
         )
+
         Spacer(modifier = Modifier.height(32.dp))
 
         Text(

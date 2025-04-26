@@ -45,11 +45,13 @@ class MainActivity : AppCompatActivity() {
 
     private val keyStoreManager by lazy { KeyStoreManager() }
     private lateinit var viewModelFactory: ViewModelFactory
+    private lateinit var onboardingViewModel: OnboardingViewModel
 
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         viewModelFactory = ViewModelFactory(applicationContext, keyStoreManager)
+        onboardingViewModel = ViewModelProvider(this, viewModelFactory)[OnboardingViewModel::class.java]
         enableEdgeToEdge()
 
         var startRoute = Routes.WELCOME
@@ -81,16 +83,12 @@ class MainActivity : AppCompatActivity() {
                             WelcomeScreen(navController = navController)
                         }
                         composable(Routes.KEY_GENERATION) {
-                            val onboardingViewModel: OnboardingViewModel =
-                                viewModel(factory = viewModelFactory)
                             KeyGenerationScreen(
                                 navController = navController,
                                 viewModel = onboardingViewModel
                             )
                         }
                         composable(Routes.REGISTRATION) {
-                            val onboardingViewModel: OnboardingViewModel =
-                                viewModel(factory = viewModelFactory)
                             RegistrationScreen(
                                 navController = navController,
                                 viewModel = onboardingViewModel
