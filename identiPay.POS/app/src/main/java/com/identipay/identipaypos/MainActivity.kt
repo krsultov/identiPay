@@ -1,150 +1,135 @@
 package com.identipay.identipaypos
+
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
 import android.os.Bundle
+import android.os.IBinder
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import com.identipay.identipaypos.ui.theme.IdentiPayPOSTheme
 import com.identipay.identipaypos.viewmodel.PosViewModel
-import java.util.UUID
+import recieptservice.com.recieptservice.PrinterInterface
+import java.util.concurrent.atomic.AtomicReference
+import com.identipay.identipaypos.ui.screens.PosAppScreen
 
-class MainActivity : ComponentActivity() {
+val LocalPrinterService = staticCompositionLocalOf<PrinterServiceAccessor?> { null }
+
+interface PrinterServiceAccessor {
+    fun getPrinterService(): PrinterInterface?
+    fun isBound(): Boolean
+    fun attemptBind()
+}
+
+class MainActivity : ComponentActivity(), PrinterServiceAccessor {
+    private val printerServiceRef = AtomicReference<PrinterInterface?>()
+    @Volatile private var isPrinterServiceBound = false
+
+    private val printerServiceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            Log.i("MainActivity", "Printer Service Connected")
+            printerServiceRef.set(PrinterInterface.Stub.asInterface(service))
+            isPrinterServiceBound = true
+            Toast.makeText(this@MainActivity, "Printer Ready", Toast.LENGTH_SHORT).show()
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            Log.w("MainActivity", "Printer Service Disconnected")
+            printerServiceRef.set(null)
+            isPrinterServiceBound = false
+            Toast.makeText(this@MainActivity, "Printer Disconnected", Toast.LENGTH_SHORT).show()
+        }
+
+        override fun onBindingDied(name: ComponentName?) {
+            Log.e("MainActivity", "Printer Service Binding Died")
+            onServiceDisconnected(name)
+        }
+
+        override fun onNullBinding(name: ComponentName?) {
+            Log.e("MainActivity", "Printer Service Null Binding - Service available but didn't bind?")
+            isPrinterServiceBound = false
+            Toast.makeText(this@MainActivity, "Printer Binding Failed", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        bindToPrinterService()
+
         setContent {
-            IdentiPayPOSTheme {
-                PosAppScreen()
+            CompositionLocalProvider(LocalPrinterService provides this) {
+                IdentiPayPOSTheme {
+                    PosAppScreen(viewModel = PosViewModel())
+                }
             }
         }
     }
-}
 
-@Composable
-fun PosAppScreen(viewModel: PosViewModel = viewModel()) {
-
-    val uiState by viewModel.uiState
-    val previousPollingTxIdState = remember { mutableStateOf<UUID?>(null) }
-
-    LaunchedEffect(uiState.pollingTransactionId) {
-        val currentTxId = uiState.pollingTransactionId
-        if (currentTxId != null && currentTxId != previousPollingTxIdState.value) {
-            Log.d("PosAppScreen", "Detected new transaction offer ID, starting polling: $currentTxId")
-            viewModel.startPolling(currentTxId)
-            previousPollingTxIdState.value = currentTxId
-        }
+    override fun onDestroy() {
+        super.onDestroy()
+        unbindPrinterService()
     }
 
+    override fun getPrinterService(): PrinterInterface? {
+        return if (isPrinterServiceBound) printerServiceRef.get() else null
+    }
+    override fun isBound(): Boolean {
+        return isPrinterServiceBound
+    }
 
-    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text("IdentiPay POS", style = MaterialTheme.typography.headlineSmall)
-            Spacer(modifier = Modifier.height(16.dp))
+    override fun attemptBind() {
+        bindToPrinterService()
+    }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = uiState.amount,
-                    onValueChange = viewModel::onAmountChange,
-                    label = { Text("Amount") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.weight(0.6f)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                OutlinedTextField(
-                    value = uiState.currency,
-                    onValueChange = viewModel::onCurrencyChange,
-                    label = { Text("Currency") },
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
-                    modifier = Modifier.weight(0.4f)
-                )
-            }
-            Spacer(modifier = Modifier.height(16.dp))
+    private fun bindToPrinterService() {
+        if (!isPrinterServiceBound) {
+            Log.d("MainActivity", "Attempting to bind to printer service...")
+            val intent = Intent()
+            val servicePackage = "recieptservice.com.recieptservice"
+            val serviceClass = "recieptservice.com.recieptservice.service.PrinterService"
+            intent.component = ComponentName(servicePackage, serviceClass)
 
-            Button(
-                enabled = !uiState.isLoading && !uiState.isPolling,
-                onClick = viewModel::generatePaymentOfferQr,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(if (uiState.isPolling) "Polling Active..." else "Generate Payment Request QR")
-            }
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Box(
-                modifier = Modifier
-                    .size(250.dp)
-                    .background(Color.LightGray),
-                contentAlignment = Alignment.Center
-            ) {
-                if (uiState.isLoading && uiState.qrCodeBitmap == null) {
-                    CircularProgressIndicator()
-                } else if (uiState.qrCodeBitmap != null) {
-                    Image(
-                        bitmap = uiState.qrCodeBitmap!!.asImageBitmap(),
-                        contentDescription = "Payment QR Code",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit
-                    )
+            try {
+                val bound = bindService(intent, printerServiceConnection, Context.BIND_AUTO_CREATE)
+                if (!bound) {
+                    Log.e("MainActivity", "bindService returned false. Service missing or inaccessible?")
+                    Toast.makeText(this, "Printer Service Not Found/Accessible", Toast.LENGTH_LONG).show()
+                    isPrinterServiceBound = false
                 } else {
-                    Text("QR Code will appear here", textAlign = TextAlign.Center)
+                    Log.d("MainActivity", "bindService call initiated.")
                 }
+            } catch (sec: SecurityException) {
+                Log.e("MainActivity", "SecurityException binding printer service.", sec)
+                Toast.makeText(this, "Permission denied for Printer", Toast.LENGTH_LONG).show()
+                isPrinterServiceBound = false
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Exception binding printer service.", e)
+                Toast.makeText(this, "Error connecting to Printer", Toast.LENGTH_LONG).show()
+                isPrinterServiceBound = false
             }
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = uiState.statusMessage,
-                style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Center,
-                color = when (uiState.finalTransactionStatus) {
-                    "Completed" -> Color(0xFF006400)
-                    "Failed" -> MaterialTheme.colorScheme.error
-                    else -> LocalContentColor.current
-                }
-            )
-
-            uiState.errorMessage?.let { error ->
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = error,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                    textAlign = TextAlign.Center
-                )
-            }
+        } else {
+            Log.d("MainActivity", "Printer service binding already established or pending.")
         }
     }
-}
 
-@Preview(showBackground = true)
-@Composable
-fun PosAppScreenPreview() {
-    IdentiPayPOSTheme {
-        PosAppScreen(viewModel = PosViewModel())
+    private fun unbindPrinterService() {
+        if (isPrinterServiceBound) {
+            Log.d("MainActivity", "Unbinding from printer service.")
+            try {
+                unbindService(printerServiceConnection)
+            } catch (e: IllegalArgumentException) {
+                Log.w("MainActivity", "Service was already unbound?", e)
+            } finally {
+                isPrinterServiceBound = false
+                printerServiceRef.set(null)
+            }
+        }
     }
 }
