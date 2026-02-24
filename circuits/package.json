@@ -1,0 +1,23 @@
+{
+  "name": "identipay-circuits",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "compile:identity": "bash scripts/compile.sh identity_registration",
+    "compile:age": "bash scripts/compile.sh age_check",
+    "compile:pool": "bash scripts/compile.sh pool_spend",
+    "compile:all": "npm run compile:identity && npm run compile:age",
+    "test": "mocha test/*.test.js --timeout 30000",
+    "export:vk": "node scripts/export_sui_vk.js"
+  },
+  "dependencies": {
+    "circomlib": "^2.0.5",
+    "circomlibjs": "^0.1.7",
+    "snarkjs": "^0.7.5"
+  },
+  "devDependencies": {
+    "chai": "^4.3.7",
+    "circom_tester": "^0.0.19",
+    "mocha": "^10.2.0"
+  }
+}
