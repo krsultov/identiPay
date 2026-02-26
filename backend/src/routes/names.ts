@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { NotFoundError, ValidationError } from "../errors/index.ts";
-import { SponsoredRegistrationInput } from "../types/name.ts";
+import { RegistrationInput } from "../types/name.ts";
 import { names } from "../db/schema.ts";
 import type { Db } from "../db/connection.ts";
 import type { SuiService } from "../services/sui.service.ts";
@@ -60,17 +60,45 @@ export function nameRoutes(deps: { db: Db; suiService: SuiService }) {
     });
   });
 
-  // POST /register -- sponsor a wallet-signed name registration transaction
-  // The wallet builds + signs the PTB. We add gas sponsorship and submit.
-  // ctx.sender() remains the wallet's address (preserves MetaAddressEntry ownership).
+  // POST /register -- register a name with stealth meta-address
+  // The backend builds the PTB, signs with admin key (gas sponsor), and submits.
+  // Wallet sends registration parameters; backend handles Sui transaction construction.
   app.post("/register", async (c) => {
     const body = await c.req.json();
-    const parsed = SponsoredRegistrationInput.safeParse(body);
+    const parsed = RegistrationInput.safeParse(body);
     if (!parsed.success) {
       throw new ValidationError("Invalid registration input", parsed.error.flatten());
     }
 
-    const digest = await deps.suiService.sponsorAndSubmitTx(parsed.data.signedTxBytes);
+    const { name, spendPubkey, viewPubkey, identityCommitment, zkProof, zkPublicInputs } = parsed.data;
+
+    // Build and submit the registration transaction on-chain
+    const digest = await deps.suiService.registerName({
+      name,
+      spendPubkey,
+      viewPubkey,
+      identityCommitment,
+      zkProof,
+      zkPublicInputs,
+    });
+
+    // Cache in DB
+    await deps.db
+      .insert(names)
+      .values({
+        name,
+        spendPubkey,
+        viewPubkey,
+        identityCommitment,
+      })
+      .onConflictDoUpdate({
+        target: names.name,
+        set: {
+          spendPubkey,
+          viewPubkey,
+          updatedAt: new Date(),
+        },
+      });
 
     return c.json({ txDigest: digest }, 201);
   });

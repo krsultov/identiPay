@@ -7,7 +7,14 @@ export interface NameResolution {
   viewPubkey: string;
 }
 
-export const SponsoredRegistrationInput = z.object({
-  signedTxBytes: z.string(), // base64-encoded wallet-signed transaction
+const hexString = z.string().regex(/^[0-9a-fA-F]+$/);
+
+export const RegistrationInput = z.object({
+  name: z.string().min(3).max(20),
+  spendPubkey: hexString, // 32 bytes hex
+  viewPubkey: hexString, // 32 bytes hex
+  identityCommitment: hexString, // 32 bytes hex
+  zkProof: hexString, // 256 bytes hex (Groth16 proof)
+  zkPublicInputs: hexString, // N * 32 bytes hex
 });
-export type SponsoredRegistrationInput = z.infer<typeof SponsoredRegistrationInput>;
+export type RegistrationInput = z.infer<typeof RegistrationInput>;

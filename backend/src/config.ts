@@ -16,6 +16,7 @@ export const config = {
   metaRegistryId: env("META_REGISTRY_ID"),
   settlementStateId: env("SETTLEMENT_STATE_ID"),
   adminSecretKey: env("ADMIN_SECRET_KEY"),
+  verificationKeyId: env("VERIFICATION_KEY_ID"),
 } as const;
 
 export type Config = typeof config;

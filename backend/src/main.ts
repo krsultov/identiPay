@@ -27,6 +27,7 @@ const suiService = new SuiService({
   metaRegistryId: config.metaRegistryId,
   settlementStateId: config.settlementStateId,
   adminSecretKey: config.adminSecretKey,
+  verificationKeyId: config.verificationKeyId,
 });
 
 // Create Hono app

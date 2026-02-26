@@ -40,7 +40,7 @@ export class ConflictError extends AppError {
 
 export class SuiError extends AppError {
   constructor(message: string, details?: unknown) {
-    super(502, "SUI_ERROR", message, details);
+    super(500, "SUI_ERROR", message, details);
     this.name = "SuiError";
   }
 }

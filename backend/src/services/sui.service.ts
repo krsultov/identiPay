@@ -12,6 +12,7 @@ export interface SuiServiceConfig {
   metaRegistryId: string;
   settlementStateId: string;
   adminSecretKey: string;
+  verificationKeyId: string;
 }
 
 export interface MerchantOnChainParams {
@@ -161,6 +162,57 @@ export class SuiService {
     } catch (error) {
       if (error instanceof SuiError) throw error;
       throw new SuiError("Failed to register merchant on-chain", {
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  /**
+   * Build and execute a name registration PTB.
+   * The admin key pays for gas. The MetaAddressEntry is transferred to admin
+   * (the wallet's public keys are stored in the entry for stealth address derivation).
+   */
+  async registerName(params: {
+    name: string;
+    spendPubkey: string;
+    viewPubkey: string;
+    identityCommitment: string;
+    zkProof: string;
+    zkPublicInputs: string;
+  }): Promise<string> {
+    try {
+      const tx = new Transaction();
+      tx.moveCall({
+        target: `${this.config.packageId}::meta_address_registry::register_name`,
+        arguments: [
+          tx.object(this.config.metaRegistryId),
+          tx.object(this.config.verificationKeyId),
+          tx.pure.string(params.name),
+          tx.pure.vector('u8', Array.from(hexToBytes(params.spendPubkey))),
+          tx.pure.vector('u8', Array.from(hexToBytes(params.viewPubkey))),
+          tx.pure.vector('u8', Array.from(hexToBytes(params.identityCommitment))),
+          tx.pure.vector('u8', Array.from(hexToBytes(params.zkProof))),
+          tx.pure.vector('u8', Array.from(hexToBytes(params.zkPublicInputs))),
+        ],
+      });
+
+      const result = await this.client.signAndExecuteTransaction({
+        transaction: tx,
+        signer: this.adminKeypair,
+        options: { showEffects: true },
+      });
+
+      if (result.effects?.status?.status !== "success") {
+        throw new SuiError(
+          "Name registration failed on-chain",
+          result.effects?.status,
+        );
+      }
+
+      return result.digest;
+    } catch (error) {
+      if (error instanceof SuiError) throw error;
+      throw new SuiError("Failed to register name on-chain", {
         message: (error as Error).message,
       });
     }

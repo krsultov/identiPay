@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>ZK Proof Bridge</title>
+    <script src="snarkjs.min.js"></script>
+</head>
+<body>
+<script>
+// BN254 base field modulus
+var P = 21888242871839275222246405745257275088696311157297823662689037894645226208583n;
+var HALF_P = (P - 1n) / 2n;
+
+// Circuit data is injected by Android as base64 strings before calling generateProof.
+var _wasmBase64 = null;
+var _zkeyBase64 = null;
+
+function setCircuitData(wasmBase64, zkeyBase64) {
+    _wasmBase64 = wasmBase64;
+    _zkeyBase64 = zkeyBase64;
+}
+
+function base64ToUint8Array(base64) {
+    var binaryString = atob(base64);
+    var len = binaryString.length;
+    var bytes = new Uint8Array(len);
+    for (var i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+}
+
+async function generateProof(inputs) {
+    try {
+        if (!_wasmBase64 || !_zkeyBase64) {
+            throw new Error('Circuit data not loaded. Call setCircuitData first.');
+        }
+
+        var wasmBytes = base64ToUint8Array(_wasmBase64);
+        var zkeyBytes = base64ToUint8Array(_zkeyBase64);
+
+        // Generate proof using snarkjs
+        var result = await snarkjs.groth16.fullProve(
+            inputs,
+            wasmBytes,
+            zkeyBytes
+        );
+
+        // Serialize to arkworks compressed format (what Sui expects)
+        var proofBytes = serializeProofCompressed(result.proof);
+        var publicInputsBytes = serializePublicInputsLE(result.publicSignals);
+
+        // Return to Android via bridge
+        ProofBridge.onProofResult(
+            bytesToHex(proofBytes),
+            bytesToHex(publicInputsBytes)
+        );
+    } catch (error) {
+        ProofBridge.onProofError(error.message || String(error));
+    }
+}
+
+/**
+ * Serialize proof in arkworks compressed format.
+ * Proof = A (G1 compressed, 32 bytes) + B (G2 compressed, 64 bytes) + C (G1 compressed, 32 bytes) = 128 bytes
+ */
+function serializeProofCompressed(proof) {
+    var result = new Uint8Array(128);
+    var offset = 0;
+
+    // A (G1 compressed)
+    var aBytes = compressG1(proof.pi_a[0], proof.pi_a[1]);
+    result.set(aBytes, offset); offset += 32;
+
+    // B (G2 compressed) - snarkjs uses [c0, c1] ordering
+    var bBytes = compressG2(
+        proof.pi_b[0][0], proof.pi_b[0][1],  // x: c0, c1
+        proof.pi_b[1][0], proof.pi_b[1][1]   // y: c0, c1
+    );
+    result.set(bBytes, offset); offset += 64;
+
+    // C (G1 compressed)
+    var cBytes = compressG1(proof.pi_c[0], proof.pi_c[1]);
+    result.set(cBytes, offset);
+
+    return result;
+}
+
+/**
+ * Serialize public inputs as little-endian 32-byte field elements.
+ */
+function serializePublicInputsLE(signals) {
+    var result = new Uint8Array(signals.length * 32);
+    for (var i = 0; i < signals.length; i++) {
+        copyLittleEndian(result, i * 32, signals[i], 32);
+    }
+    return result;
+}
+
+/**
+ * Compress a G1 affine point to 32 bytes (arkworks format).
+ * x in LE, sign bit (y > half_p) in MSB of last byte.
+ */
+function compressG1(xDec, yDec) {
+    var bytes = new Uint8Array(32);
+    copyLittleEndian(bytes, 0, xDec, 32);
+    if (BigInt(yDec) > HALF_P) {
+        bytes[31] |= 0x80;
+    }
+    return bytes;
+}
+
+/**
+ * Compress a G2 affine point to 64 bytes (arkworks format).
+ * x as Fq2 (c0 || c1 in LE), sign bit in MSB of byte[63].
+ */
+function compressG2(x_c0_dec, x_c1_dec, y_c0_dec, y_c1_dec) {
+    var bytes = new Uint8Array(64);
+    copyLittleEndian(bytes, 0, x_c0_dec, 32);
+    copyLittleEndian(bytes, 32, x_c1_dec, 32);
+
+    var y_c1 = BigInt(y_c1_dec);
+    var y_c0 = BigInt(y_c0_dec);
+    var yIsNegative = false;
+    if (y_c1 !== 0n) {
+        yIsNegative = y_c1 > HALF_P;
+    } else {
+        yIsNegative = y_c0 > HALF_P;
+    }
+    if (yIsNegative) {
+        bytes[63] |= 0x80;
+    }
+    return bytes;
+}
+
+function copyLittleEndian(dest, offset, decStr, numBytes) {
+    var n = BigInt(decStr);
+    for (var i = 0; i < numBytes; i++) {
+        dest[offset + i] = Number(n & 0xffn);
+        n >>= 8n;
+    }
+}
+
+function bytesToHex(bytes) {
+    return Array.from(bytes)
+        .map(function(b) { return b.toString(16).padStart(2, '0'); })
+        .join('');
+}
+</script>
+</body>
+</html>
