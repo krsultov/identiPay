@@ -5,6 +5,10 @@ import android.content.SharedPreferences
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
+import androidx.room.Room
+import com.identipay.wallet.data.db.AppDatabase
+import com.identipay.wallet.data.db.dao.StealthAddressDao
+import com.identipay.wallet.data.db.dao.TransactionDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -29,4 +33,20 @@ object AppModule {
     fun provideSharedPreferences(@ApplicationContext context: Context): SharedPreferences {
         return context.getSharedPreferences("identipay_encrypted", Context.MODE_PRIVATE)
     }
+
+    @Provides
+    @Singleton
+    fun provideDatabase(@ApplicationContext context: Context): AppDatabase {
+        return Room.databaseBuilder(
+            context,
+            AppDatabase::class.java,
+            "identipay.db",
+        ).build()
+    }
+
+    @Provides
+    fun provideStealthAddressDao(db: AppDatabase): StealthAddressDao = db.stealthAddressDao()
+
+    @Provides
+    fun provideTransactionDao(db: AppDatabase): TransactionDao = db.transactionDao()
 }

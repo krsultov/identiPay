@@ -66,9 +66,8 @@ export function createMockSuiService() {
     resolveName: (_name: string) => Promise.resolve(null),
     registerMerchantOnChain: (_params: unknown) => Promise.resolve("mock-digest-" + crypto.randomUUID()),
     sponsorAndSubmitTx: (_bytes: string) => Promise.resolve("mock-digest-" + crypto.randomUUID()),
-    subscribeToSettlementEvents: (_cb: unknown) => Promise.resolve(() => {}),
-    subscribeToAnnouncementEvents: (_cb: unknown) => Promise.resolve(() => {}),
-    queryEvents: () => Promise.resolve({ data: [], hasNextPage: false, nextCursor: null }),
+    pollSettlementEvents: () => Promise.resolve({ events: [], nextCursor: null, hasNextPage: false }),
+    pollAnnouncementEvents: () => Promise.resolve({ events: [], nextCursor: null, hasNextPage: false }),
     getAdminAddress: () => "0x" + "00".repeat(32),
   };
 }

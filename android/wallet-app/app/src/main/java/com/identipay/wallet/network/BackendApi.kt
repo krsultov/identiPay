@@ -49,6 +49,147 @@ data class AnnouncementPage(
     val hasMore: Boolean = false,
 )
 
+@Serializable
+data class CreatePayRequest(
+    val recipientName: String,
+    val amount: String,
+    val currency: String = "USDC",
+    val memo: String? = null,
+    val expiresInSeconds: Int = 600,
+)
+
+@Serializable
+data class PayRequestResponse(
+    val requestId: String,
+    val recipientName: String,
+    val amount: String,
+    val currency: String,
+    val memo: String? = null,
+    val expiresAt: String,
+    val status: String,
+    val qrDataUrl: String? = null,
+    val uri: String? = null,
+)
+
+@Serializable
+data class PayRequestDetail(
+    val requestId: String,
+    val recipientName: String,
+    val amount: String,
+    val currency: String,
+    val memo: String? = null,
+    val expiresAt: String,
+    val status: String,
+    val recipient: NameResolution? = null,
+)
+
+// ── Gas sponsorship types ──
+
+@Serializable
+data class GasSponsorSendRequest(
+    val type: String = "send",
+    val senderAddress: String,
+    val amount: String,
+    val recipient: String,
+    val coinType: String,
+    val ephemeralPubkey: List<Int>,
+    val viewTag: Int,
+)
+
+@Serializable
+data class GasSponsorSettlementRequest(
+    val type: String,    // "settlement" or "settlement_no_zk"
+    val senderAddress: String,
+    val coinType: String,
+    val amount: String,
+    val merchantAddress: String,
+    val buyerStealthAddr: String,
+    val intentSig: List<Int>,
+    val intentHash: List<Int>,
+    val buyerPubkey: List<Int>,
+    val proposalExpiry: String,
+    val encryptedPayload: List<Int>,
+    val payloadNonce: List<Int>,
+    val ephemeralPubkey: List<Int>,
+    val encryptedWarrantyTerms: List<Int>,
+    val warrantyTermsNonce: List<Int>,
+    val warrantyExpiry: String,
+    val warrantyTransferable: Boolean,
+    val stealthEphemeralPubkey: List<Int>,
+    val stealthViewTag: Int,
+    val zkProof: List<Int>? = null,
+    val zkPublicInputs: List<Int>? = null,
+)
+
+@Serializable
+data class GasSponsorResponse(val txBytes: String)
+
+@Serializable
+data class SubmitTxRequest(val txBytes: String, val senderSignature: String)
+
+@Serializable
+data class SubmitTxResponse(val txDigest: String)
+
+// ── Commerce proposal types (matching backend types/proposal.ts) ──
+
+@Serializable
+data class MerchantInfo(
+    val did: String,
+    val name: String,
+    val suiAddress: String,
+    val publicKey: String,
+)
+
+@Serializable
+data class LineItem(
+    val name: String,
+    val quantity: Int,
+    val unitPrice: String,
+    val currency: String? = null,
+)
+
+@Serializable
+data class AmountInfo(
+    val value: String,
+    val currency: String,
+)
+
+@Serializable
+data class Warranty(
+    val durationDays: Int,
+    val transferable: Boolean,
+)
+
+@Serializable
+data class Deliverables(
+    val receipt: Boolean,
+    val warranty: Warranty? = null,
+)
+
+@Serializable
+data class Constraints(
+    val ageGate: Int? = null,
+    val regionRestriction: List<String>? = null,
+)
+
+@Serializable
+data class CommerceProposal(
+    @kotlinx.serialization.SerialName("@context")
+    val context: String,
+    @kotlinx.serialization.SerialName("@type")
+    val type: String,
+    val transactionId: String,
+    val merchant: MerchantInfo,
+    val items: List<LineItem>,
+    val amount: AmountInfo,
+    val deliverables: Deliverables,
+    val constraints: Constraints? = null,
+    val expiresAt: String,
+    val intentHash: String,
+    val settlementChain: String,
+    val settlementModule: String,
+)
+
 /**
  * Ktor HTTP client wrapping all backend API endpoints.
  */
@@ -100,6 +241,66 @@ class BackendApi @Inject constructor(
             since?.let { parameter("since", it) }
             parameter("limit", limit)
             cursor?.let { parameter("cursor", it) }
+        }.body()
+    }
+
+    /**
+     * Create a payment request.
+     * POST /pay-requests
+     */
+    suspend fun createPayRequest(request: CreatePayRequest): PayRequestResponse {
+        return httpClient.post("pay-requests") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.body()
+    }
+
+    /**
+     * Get a payment request by ID.
+     * GET /pay-requests/:requestId
+     */
+    suspend fun getPayRequest(requestId: String): PayRequestDetail {
+        return httpClient.get("pay-requests/$requestId").body()
+    }
+
+    /**
+     * Get a commerce proposal (intent) by transaction ID.
+     * GET /intents/:txId
+     */
+    suspend fun getIntent(transactionId: String): CommerceProposal {
+        return httpClient.get("intents/$transactionId").body()
+    }
+
+    /**
+     * Request gas-sponsored P2P send transaction.
+     * POST /transactions/gas-sponsor
+     */
+    suspend fun sponsorSend(request: GasSponsorSendRequest): GasSponsorResponse {
+        return httpClient.post("transactions/gas-sponsor") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.body()
+    }
+
+    /**
+     * Request gas-sponsored settlement transaction.
+     * POST /transactions/gas-sponsor
+     */
+    suspend fun sponsorSettlement(request: GasSponsorSettlementRequest): GasSponsorResponse {
+        return httpClient.post("transactions/gas-sponsor") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.body()
+    }
+
+    /**
+     * Submit a sponsored transaction with sender signature.
+     * POST /transactions/submit
+     */
+    suspend fun submitSponsoredTx(request: SubmitTxRequest): SubmitTxResponse {
+        return httpClient.post("transactions/submit") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
         }.body()
     }
 }

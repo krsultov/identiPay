@@ -1,7 +1,5 @@
 package com.identipay.wallet.di
 
-import com.goterl.lazysodium.LazySodiumAndroid
-import com.goterl.lazysodium.SodiumAndroid
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -13,12 +11,6 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object CryptoModule {
-
-    @Provides
-    @Singleton
-    fun provideLazySodium(): LazySodiumAndroid {
-        return LazySodiumAndroid(SodiumAndroid())
-    }
 
     @Provides
     @Singleton

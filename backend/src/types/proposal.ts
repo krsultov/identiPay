@@ -38,7 +38,7 @@ export const Constraints = z
 
 // Full JSON-LD CommerceProposal (as stored / returned)
 export const CommerceProposal = z.object({
-  "@context": z.literal("https://schema.identipay.io/v1"),
+  "@context": z.literal("https://schema.identipay.net/v1"),
   "@type": z.literal("CommerceProposal"),
   transactionId: z.string().uuid(),
   merchant: MerchantInfo,

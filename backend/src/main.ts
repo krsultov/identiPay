@@ -12,7 +12,7 @@ import { nameRoutes } from "./routes/names.ts";
 import { announcementRoutes } from "./routes/announcements.ts";
 import { payRequestRoutes } from "./routes/pay-requests.ts";
 import { handleWsConnection, pushSettlementUpdate } from "./ws/status.ts";
-import { proposals, announcements } from "./db/schema.ts";
+import { proposals, announcements, eventCursors } from "./db/schema.ts";
 import { eq } from "drizzle-orm";
 import { lt, and } from "drizzle-orm";
 
@@ -45,7 +45,7 @@ const api = new Hono();
 api.route("/merchants", merchantRoutes({ db, suiService }));
 api.route("/proposals", proposalRoutes({ db, packageId: config.packageId }));
 api.route("/intents", intentRoutes({ db }));
-api.route("/transactions", transactionRoutes({ db }));
+api.route("/transactions", transactionRoutes({ db, suiService }));
 api.route("/names", nameRoutes({ db, suiService }));
 api.route("/announcements", announcementRoutes({ db }));
 api.route("/pay-requests", payRequestRoutes({ db, suiService }));
@@ -69,13 +69,65 @@ app.get("/ws/transactions/:txId", (c) => {
   return response;
 });
 
-// --- Background tasks ---
+// --- Background tasks: polling-based event indexers ---
 
-// Settlement event subscriber
-async function startSettlementSubscriber() {
-  try {
-    await suiService.subscribeToSettlementEvents(async (event) => {
-      // Find proposal by intent hash
+const POLL_INTERVAL_MS = 3_000; // 3 seconds between polls
+const SETTLEMENT_CURSOR_KEY = "settlement::SettlementEvent";
+const ANNOUNCEMENT_CURSOR_KEY = "announcements::StealthAnnouncement";
+
+/**
+ * Load a persisted event cursor from the database.
+ */
+async function loadCursor(
+  eventType: string,
+): Promise<{ txDigest: string; eventSeq: string } | null> {
+  const [row] = await db
+    .select()
+    .from(eventCursors)
+    .where(eq(eventCursors.eventType, eventType))
+    .limit(1);
+  if (!row) return null;
+  return { txDigest: row.txDigest, eventSeq: row.eventSeq };
+}
+
+/**
+ * Save an event cursor to the database (upsert).
+ */
+async function saveCursor(
+  eventType: string,
+  cursor: { txDigest: string; eventSeq: string },
+): Promise<void> {
+  await db
+    .insert(eventCursors)
+    .values({
+      eventType,
+      txDigest: cursor.txDigest,
+      eventSeq: cursor.eventSeq,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: eventCursors.eventType,
+      set: {
+        txDigest: cursor.txDigest,
+        eventSeq: cursor.eventSeq,
+        updatedAt: new Date(),
+      },
+    });
+}
+
+/**
+ * Poll for settlement events, process them, and persist the cursor.
+ * Drains all available pages before sleeping.
+ */
+async function pollSettlementEvents(): Promise<void> {
+  let cursor = await loadCursor(SETTLEMENT_CURSOR_KEY);
+
+  // Drain all available pages
+  let hasMore = true;
+  while (hasMore) {
+    const result = await suiService.pollSettlementEvents(cursor);
+
+    for (const event of result.events) {
       const [proposal] = await db
         .select()
         .from(proposals)
@@ -83,32 +135,40 @@ async function startSettlementSubscriber() {
         .limit(1);
 
       if (proposal && proposal.status === "pending") {
-        // Update proposal status
         await db
           .update(proposals)
-          .set({ status: "settled", suiTxDigest: event.merchant })
+          .set({ status: "settled", suiTxDigest: event.txDigest })
           .where(eq(proposals.transactionId, proposal.transactionId));
 
-        // Push to WebSocket clients (buyer_stealth_address NOT forwarded)
         pushSettlementUpdate(
           proposal.transactionId,
           "settled",
-          event.merchant,
+          event.txDigest,
         );
       }
-    });
-    console.log("Settlement event subscriber started");
-  } catch (error) {
-    console.error("Failed to start settlement subscriber:", error);
-    // Retry after delay
-    setTimeout(startSettlementSubscriber, 5000);
+    }
+
+    if (result.nextCursor) {
+      cursor = result.nextCursor;
+      await saveCursor(SETTLEMENT_CURSOR_KEY, cursor);
+    }
+
+    hasMore = result.hasNextPage;
   }
 }
 
-// Announcement event indexer
-async function startAnnouncementIndexer() {
-  try {
-    await suiService.subscribeToAnnouncementEvents(async (event) => {
+/**
+ * Poll for announcement events, index them, and persist the cursor.
+ * Drains all available pages before sleeping.
+ */
+async function pollAnnouncementEvents(): Promise<void> {
+  let cursor = await loadCursor(ANNOUNCEMENT_CURSOR_KEY);
+
+  let hasMore = true;
+  while (hasMore) {
+    const result = await suiService.pollAnnouncementEvents(cursor);
+
+    for (const event of result.events) {
       await db.insert(announcements).values({
         ephemeralPubkey: event.ephemeralPubkey,
         viewTag: event.viewTag,
@@ -117,12 +177,33 @@ async function startAnnouncementIndexer() {
         txDigest: event.txDigest,
         timestamp: new Date(parseInt(event.timestamp)),
       });
-    });
-    console.log("Announcement indexer started");
-  } catch (error) {
-    console.error("Failed to start announcement indexer:", error);
-    setTimeout(startAnnouncementIndexer, 5000);
+    }
+
+    if (result.nextCursor) {
+      cursor = result.nextCursor;
+      await saveCursor(ANNOUNCEMENT_CURSOR_KEY, cursor);
+    }
+
+    hasMore = result.hasNextPage;
   }
+}
+
+/**
+ * Start a polling loop that runs a callback on a fixed interval.
+ * On error, logs and continues polling (never exits).
+ */
+function startPollingLoop(name: string, fn: () => Promise<void>, intervalMs: number) {
+  async function tick() {
+    try {
+      await fn();
+    } catch (error) {
+      console.error(`${name} poll error:`, error);
+    }
+    setTimeout(tick, intervalMs);
+  }
+  // Start immediately
+  tick();
+  console.log(`${name} polling started (every ${intervalMs}ms)`);
 }
 
 // Proposal expiry checker (every 30 seconds)
@@ -145,8 +226,8 @@ function startExpiryChecker() {
 }
 
 // Start background tasks
-startSettlementSubscriber();
-startAnnouncementIndexer();
+startPollingLoop("Settlement indexer", pollSettlementEvents, POLL_INTERVAL_MS);
+startPollingLoop("Announcement indexer", pollAnnouncementEvents, POLL_INTERVAL_MS);
 startExpiryChecker();
 
 // Start server

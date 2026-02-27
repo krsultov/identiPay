@@ -57,6 +57,7 @@ class PassportReader @Inject constructor(
         NfcAdapter.getDefaultAdapter(activity)?.disableReaderMode(activity)
     }
 
+    @Suppress("DEPRECATION")
     private fun readPassport(tag: Tag, bacKey: BACKey, callback: ReadCallback) {
         try {
             callback.onProgress("Connecting...")
@@ -135,7 +136,11 @@ class PassportReader @Inject constructor(
             val issuerCertBytes = passiveAuth.verify(sodFile)
 
             // Extract credential fields
-            val docNumber = mrzInfo.documentNumber
+            val personalNumber = mrzInfo.personalNumber
+            if (personalNumber.isNullOrBlank()) {
+                callback.onError("Passport does not contain a personal number (EGN). This passport type is not supported.")
+                return
+            }
             val dateOfBirth = mrzInfo.dateOfBirth
             val nationality = mrzInfo.nationality
             val issuer = mrzInfo.issuingState
@@ -145,14 +150,14 @@ class PassportReader @Inject constructor(
             val issuerCertHash = java.math.BigInteger(1, md.digest(issuerCertBytes))
                 .mod(com.identipay.wallet.crypto.PoseidonHash.FIELD_PRIME)
             md.reset()
-            val docNumberHash = identityCommitment.hashToField(docNumber)
+            val personalNumberHash = identityCommitment.hashToField(personalNumber)
             val dobHash = identityCommitment.hashToField(dateOfBirth)
 
             val credential = CredentialData(
                 issuerCertHash = issuerCertHash,
-                docNumberHash = docNumberHash,
+                personalNumberHash = personalNumberHash,
                 dobHash = dobHash,
-                rawDocNumber = docNumber,
+                rawPersonalNumber = personalNumber,
                 rawDateOfBirth = dateOfBirth,
                 rawNationality = nationality,
                 rawIssuer = issuer,

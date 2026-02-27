@@ -7,17 +7,20 @@ import android.security.keystore.KeyProperties
 import android.util.Base64
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.security.KeyStore
+import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.PBEKeySpec
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class SeedManager @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val sharedPreferences: SharedPreferences,
 ) {
     companion object {
@@ -50,6 +53,32 @@ class SeedManager @Inject constructor(
         storeMnemonic(words.joinToString(" "))
         return true
     }
+
+    /**
+     * Derive a deterministic seed from stable passport fields + a 6-digit PIN.
+     * Same passport + same PIN always produces the same seed, enabling
+     * wallet recovery on any device without mnemonic backup.
+     */
+    fun deriveFromPassportAndPin(
+        personalNumber: String,
+        dateOfBirth: String,
+        nationality: String,
+        issuerCertHash: ByteArray,
+        pin: String,
+    ) {
+        val identityData = "$personalNumber|$dateOfBirth|$nationality|${issuerCertHash.toHexString()}"
+        val md = MessageDigest.getInstance("SHA-256")
+        val salt = md.digest("identipay-seed-v1|$identityData".toByteArray(Charsets.UTF_8))
+
+        val spec = PBEKeySpec(pin.toCharArray(), salt, 600_000, 256)
+        val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+        val seed = factory.generateSecret(spec).encoded
+
+        storeSeed(seed)
+    }
+
+    private fun ByteArray.toHexString(): String =
+        joinToString("") { "%02x".format(it) }
 
     fun getSeed(): ByteArray {
         val encrypted = Base64.decode(

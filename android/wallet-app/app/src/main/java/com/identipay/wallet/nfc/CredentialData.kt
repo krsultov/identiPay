@@ -8,9 +8,9 @@ import java.math.BigInteger
  */
 data class CredentialData(
     val issuerCertHash: BigInteger,
-    val docNumberHash: BigInteger,
+    val personalNumberHash: BigInteger,
     val dobHash: BigInteger,
-    val rawDocNumber: String,
+    val rawPersonalNumber: String,
     val rawDateOfBirth: String,
     val rawNationality: String,
     val rawIssuer: String,
@@ -20,16 +20,16 @@ data class CredentialData(
         if (this === other) return true
         if (other !is CredentialData) return false
         return issuerCertHash == other.issuerCertHash &&
-                docNumberHash == other.docNumberHash &&
+                personalNumberHash == other.personalNumberHash &&
                 dobHash == other.dobHash &&
-                rawDocNumber == other.rawDocNumber
+                rawPersonalNumber == other.rawPersonalNumber
     }
 
     override fun hashCode(): Int {
         var result = issuerCertHash.hashCode()
-        result = 31 * result + docNumberHash.hashCode()
+        result = 31 * result + personalNumberHash.hashCode()
         result = 31 * result + dobHash.hashCode()
-        result = 31 * result + rawDocNumber.hashCode()
+        result = 31 * result + rawPersonalNumber.hashCode()
         return result
     }
 }

@@ -5,40 +5,40 @@ import jsonld from "jsonld";
 import type { CommerceProposal, CreateProposalInput } from "../types/proposal.ts";
 
 // Embedded JSON-LD context for identipay commerce proposals.
-// This avoids network dependency on https://schema.identipay.io/v1.
+// This avoids network dependency on https://schema.identipay.net/v1.
 const IDENTIPAY_CONTEXT = {
   "@context": {
-    "@vocab": "https://schema.identipay.io/v1#",
-    transactionId: "https://schema.identipay.io/v1#transactionId",
-    merchant: "https://schema.identipay.io/v1#merchant",
-    did: "https://schema.identipay.io/v1#did",
-    name: "https://schema.identipay.io/v1#name",
-    suiAddress: "https://schema.identipay.io/v1#suiAddress",
-    publicKey: "https://schema.identipay.io/v1#publicKey",
-    items: "https://schema.identipay.io/v1#items",
-    quantity: "https://schema.identipay.io/v1#quantity",
-    unitPrice: "https://schema.identipay.io/v1#unitPrice",
-    amount: "https://schema.identipay.io/v1#amount",
-    value: "https://schema.identipay.io/v1#value",
-    currency: "https://schema.identipay.io/v1#currency",
-    deliverables: "https://schema.identipay.io/v1#deliverables",
-    receipt: "https://schema.identipay.io/v1#receipt",
-    warranty: "https://schema.identipay.io/v1#warranty",
-    durationDays: "https://schema.identipay.io/v1#durationDays",
-    transferable: "https://schema.identipay.io/v1#transferable",
-    constraints: "https://schema.identipay.io/v1#constraints",
-    ageGate: "https://schema.identipay.io/v1#ageGate",
-    regionRestriction: "https://schema.identipay.io/v1#regionRestriction",
-    expiresAt: "https://schema.identipay.io/v1#expiresAt",
-    intentHash: "https://schema.identipay.io/v1#intentHash",
-    settlementChain: "https://schema.identipay.io/v1#settlementChain",
-    settlementModule: "https://schema.identipay.io/v1#settlementModule",
+    "@vocab": "https://schema.identipay.net/v1#",
+    transactionId: "https://schema.identipay.net/v1#transactionId",
+    merchant: "https://schema.identipay.net/v1#merchant",
+    did: "https://schema.identipay.net/v1#did",
+    name: "https://schema.identipay.net/v1#name",
+    suiAddress: "https://schema.identipay.net/v1#suiAddress",
+    publicKey: "https://schema.identipay.net/v1#publicKey",
+    items: "https://schema.identipay.net/v1#items",
+    quantity: "https://schema.identipay.net/v1#quantity",
+    unitPrice: "https://schema.identipay.net/v1#unitPrice",
+    amount: "https://schema.identipay.net/v1#amount",
+    value: "https://schema.identipay.net/v1#value",
+    currency: "https://schema.identipay.net/v1#currency",
+    deliverables: "https://schema.identipay.net/v1#deliverables",
+    receipt: "https://schema.identipay.net/v1#receipt",
+    warranty: "https://schema.identipay.net/v1#warranty",
+    durationDays: "https://schema.identipay.net/v1#durationDays",
+    transferable: "https://schema.identipay.net/v1#transferable",
+    constraints: "https://schema.identipay.net/v1#constraints",
+    ageGate: "https://schema.identipay.net/v1#ageGate",
+    regionRestriction: "https://schema.identipay.net/v1#regionRestriction",
+    expiresAt: "https://schema.identipay.net/v1#expiresAt",
+    intentHash: "https://schema.identipay.net/v1#intentHash",
+    settlementChain: "https://schema.identipay.net/v1#settlementChain",
+    settlementModule: "https://schema.identipay.net/v1#settlementModule",
   },
 };
 
 // Custom document loader that serves our embedded context
 const customLoader = (url: string) => {
-  if (url === "https://schema.identipay.io/v1") {
+  if (url === "https://schema.identipay.net/v1") {
     return Promise.resolve({
       contextUrl: null as string | null,
       document: IDENTIPAY_CONTEXT,
@@ -70,7 +70,7 @@ export function buildProposal(
   ).toISOString();
 
   return {
-    "@context": "https://schema.identipay.io/v1",
+    "@context": "https://schema.identipay.net/v1",
     "@type": "CommerceProposal",
     transactionId,
     merchant: {

@@ -10,6 +10,7 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
+import javax.inject.Named
 import javax.inject.Singleton
 
 @Module
@@ -31,6 +32,20 @@ object NetworkModule {
             }
             defaultRequest {
                 url(BASE_URL)
+            }
+        }
+    }
+
+    @Provides
+    @Singleton
+    @Named("suiRpc")
+    fun provideSuiRpcClient(): HttpClient {
+        return HttpClient(OkHttp) {
+            install(ContentNegotiation) {
+                json(Json {
+                    ignoreUnknownKeys = true
+                    isLenient = true
+                })
             }
         }
     }

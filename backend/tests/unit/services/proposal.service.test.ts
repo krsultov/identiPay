@@ -22,7 +22,7 @@ Deno.test("buildProposal creates valid JSON-LD structure", () => {
     "0x1::settlement",
   );
 
-  assertEquals(proposal["@context"], "https://schema.identipay.io/v1");
+  assertEquals(proposal["@context"], "https://schema.identipay.net/v1");
   assertEquals(proposal["@type"], "CommerceProposal");
   assertEquals(proposal.merchant.did, TEST_MERCHANT.did);
   assertEquals(proposal.items.length, 2);

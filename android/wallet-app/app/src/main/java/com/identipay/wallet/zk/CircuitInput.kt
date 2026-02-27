@@ -1,5 +1,6 @@
 package com.identipay.wallet.zk
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -12,20 +13,21 @@ import java.math.BigInteger
 @Serializable
 data class IdentityRegistrationInput(
     val issuerCertHash: String,
-    val docNumberHash: String,
+    @SerialName("docNumberHash")
+    val personalNumberHash: String,
     val dobHash: String,
     val userSalt: String,
 ) {
     companion object {
         fun create(
             issuerCertHash: BigInteger,
-            docNumberHash: BigInteger,
+            personalNumberHash: BigInteger,
             dobHash: BigInteger,
             userSalt: BigInteger,
         ): IdentityRegistrationInput {
             return IdentityRegistrationInput(
                 issuerCertHash = issuerCertHash.toString(),
-                docNumberHash = docNumberHash.toString(),
+                personalNumberHash = personalNumberHash.toString(),
                 dobHash = dobHash.toString(),
                 userSalt = userSalt.toString(),
             )

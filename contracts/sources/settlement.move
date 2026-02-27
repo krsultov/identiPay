@@ -11,7 +11,7 @@
 /// entirely or fails entirely -- no partial execution.
 module identipay::settlement;
 
-use sui::coin::Coin;
+use sui::coin::{Self, Coin};
 use sui::event;
 use sui::table::{Self, Table};
 use identipay::receipt;
@@ -76,8 +76,9 @@ public fun init_for_testing(ctx: &mut TxContext) {
 /// Generic over token type T (typically USDC on testnet).
 entry fun execute_commerce<T>(
     state: &mut SettlementState,
-    // Payment
-    payment: Coin<T>,
+    // Payment (mutable borrow — change stays with sender)
+    payment: &mut Coin<T>,
+    amount: u64,
     merchant: address,
     // Buyer's one-time stealth address for receiving artifacts
     buyer_stealth_addr: address,
@@ -102,8 +103,8 @@ entry fun execute_commerce<T>(
     warranty_transferable: bool,
     ctx: &mut TxContext,
 ) {
-    let amount = payment.value();
     assert!(amount > 0, EInvalidAmount);
+    assert!(payment.value() >= amount, EInvalidAmount);
 
     // 0a. Check proposal expiry (whitepaper: "expired proposal" fails)
     assert!(proposal_expiry > ctx.epoch_timestamp_ms(), EProposalExpired);
@@ -118,8 +119,9 @@ entry fun execute_commerce<T>(
     // 2. Verify intent signature (buyer signed the canonical intent hash)
     intent::verify_intent_signature(&intent_sig, &intent_hash, &buyer_pubkey);
 
-    // 3. Transfer payment to merchant
-    transfer::public_transfer(payment, merchant);
+    // 3. Split exact amount and transfer to merchant
+    let exact = coin::split(payment, amount, ctx);
+    transfer::public_transfer(exact, merchant);
 
     // 4. Mint encrypted receipt to buyer's stealth address
     let receipt_obj = receipt::mint_receipt(
@@ -168,7 +170,8 @@ entry fun execute_commerce<T>(
 /// For transactions that don't have age gates or other constraints.
 entry fun execute_commerce_no_zk<T>(
     state: &mut SettlementState,
-    payment: Coin<T>,
+    payment: &mut Coin<T>,
+    amount: u64,
     merchant: address,
     buyer_stealth_addr: address,
     intent_sig: vector<u8>,
@@ -184,8 +187,8 @@ entry fun execute_commerce_no_zk<T>(
     warranty_transferable: bool,
     ctx: &mut TxContext,
 ) {
-    let amount = payment.value();
     assert!(amount > 0, EInvalidAmount);
+    assert!(payment.value() >= amount, EInvalidAmount);
 
     // 0a. Check proposal expiry
     assert!(proposal_expiry > ctx.epoch_timestamp_ms(), EProposalExpired);
@@ -197,8 +200,9 @@ entry fun execute_commerce_no_zk<T>(
     // 1. Verify intent signature
     intent::verify_intent_signature(&intent_sig, &intent_hash, &buyer_pubkey);
 
-    // 2. Transfer payment to merchant
-    transfer::public_transfer(payment, merchant);
+    // 2. Split exact amount and transfer to merchant
+    let exact = coin::split(payment, amount, ctx);
+    transfer::public_transfer(exact, merchant);
 
     // 3. Mint encrypted receipt
     let receipt_obj = receipt::mint_receipt(

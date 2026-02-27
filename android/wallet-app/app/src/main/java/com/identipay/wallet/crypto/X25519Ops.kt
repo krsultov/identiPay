@@ -1,21 +1,19 @@
 package com.identipay.wallet.crypto
 
-import com.goterl.lazysodium.LazySodiumAndroid
+import org.bouncycastle.math.ec.rfc7748.X25519
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class X25519Ops @Inject constructor(
-    private val lazySodium: LazySodiumAndroid,
-) {
+class X25519Ops @Inject constructor() {
     /**
-     * Compute X25519 ECDH shared secret.
+     * Compute X25519 ECDH shared secret using BouncyCastle.
      */
     fun sharedSecret(privateKey: ByteArray, publicKey: ByteArray): ByteArray {
         require(privateKey.size == 32) { "Private key must be 32 bytes" }
         require(publicKey.size == 32) { "Public key must be 32 bytes" }
         val shared = ByteArray(32)
-        lazySodium.getSodium().crypto_scalarmult(shared, privateKey, publicKey)
+        X25519.scalarMult(privateKey, 0, publicKey, 0, shared, 0)
         return shared
     }
 

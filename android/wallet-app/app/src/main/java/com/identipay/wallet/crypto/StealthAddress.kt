@@ -28,6 +28,26 @@ data class StealthOutput(
     }
 }
 
+data class ScanResult(
+    val stealthAddress: String,
+    val stealthPubkey: ByteArray,
+    val stealthPrivateKey: ByteArray,  // k_spend + s mod L
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is ScanResult) return false
+        return stealthAddress == other.stealthAddress &&
+                stealthPubkey.contentEquals(other.stealthPubkey) &&
+                stealthPrivateKey.contentEquals(other.stealthPrivateKey)
+    }
+    override fun hashCode(): Int {
+        var result = stealthAddress.hashCode()
+        result = 31 * result + stealthPubkey.contentHashCode()
+        result = 31 * result + stealthPrivateKey.contentHashCode()
+        return result
+    }
+}
+
 /**
  * Stealth address derivation matching backend/src/services/stealth.service.ts exactly.
  *
@@ -47,7 +67,7 @@ class StealthAddress @Inject constructor(
         private val DOMAIN_SEPARATOR = "identipay-stealth-v1".toByteArray(Charsets.UTF_8)
 
         // Ed25519 curve order
-        private val L = BigInteger.TWO.pow(252).add(
+        private val L = BigInteger.valueOf(2).pow(252).add(
             BigInteger("27742317777372353535851937790883648493")
         )
     }
@@ -102,19 +122,21 @@ class StealthAddress @Inject constructor(
 
     /**
      * Receiver-side: check if an announcement is addressed to us.
+     * Returns null if not ours, or a ScanResult with the stealth private key if matched.
      */
     fun scan(
         viewPrivateKey: ByteArray,
+        spendPrivateKey: ByteArray,
         spendPubkey: ByteArray,
         ephemeralPubkey: ByteArray,
         announcedViewTag: Int,
         announcedStealthAddress: String,
-    ): Boolean {
+    ): ScanResult? {
         val shared = x25519Ops.sharedSecret(viewPrivateKey, ephemeralPubkey)
         val viewTag = shared[0].toInt() and 0xFF
 
         // Fast filter: check view tag first (256x speedup)
-        if (viewTag != announcedViewTag) return false
+        if (viewTag != announcedViewTag) return null
 
         // Full derivation
         val scalar = deriveStealthScalar(shared)
@@ -122,7 +144,28 @@ class StealthAddress @Inject constructor(
         val stealthPubkey = Ed25519Ops.pointAddScalarBase(spendPubkey, scalarReduced)
         val stealthAddress = SuiAddress.fromPubkey(stealthPubkey)
 
-        return stealthAddress == announcedStealthAddress
+        if (stealthAddress != announcedStealthAddress) return null
+
+        // Derive stealth private key: k_stealth = k_spend_scalar + s (mod L)
+        // spendPrivateKey is a seed — extract the actual Ed25519 scalar via SHA-512 + clamp
+        val (actualSpendScalar, _) = Ed25519Ops.expandSeed(spendPrivateKey)
+        val spendScalar = BigInteger(1, actualSpendScalar.reversedArray())
+        val sScalar = BigInteger(1, scalarReduced.reversedArray())
+        val stealthScalar = spendScalar.add(sScalar).mod(L)
+        val stealthPrivKey = ByteArray(32)
+        val scalarBytes = stealthScalar.toByteArray()
+        for (i in scalarBytes.indices) {
+            val destIdx = scalarBytes.size - 1 - i
+            if (destIdx < 32) {
+                stealthPrivKey[scalarBytes.size - 1 - i] = scalarBytes[i]
+            }
+        }
+
+        return ScanResult(
+            stealthAddress = stealthAddress,
+            stealthPubkey = stealthPubkey,
+            stealthPrivateKey = stealthPrivKey,
+        )
     }
 
     private fun deriveStealthScalar(sharedSecret: ByteArray): ByteArray {

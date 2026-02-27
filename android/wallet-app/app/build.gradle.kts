@@ -42,12 +42,14 @@ android {
         jniLibs {
             useLegacyPackaging = true
         }
+        resources {
+            excludes += setOf(
+                "META-INF/NOTICE.md",
+                "META-INF/LICENSE.md",
+                "META-INF/DEPENDENCIES",
+            )
+        }
     }
-}
-
-// Globally exclude JNA jar - we only want the AAR variant for Android
-configurations.configureEach {
-    exclude(group = "net.java.dev.jna", module = "jna")
 }
 
 dependencies {
@@ -87,10 +89,6 @@ dependencies {
     // BouncyCastle
     implementation(libs.bcprov.jdk18on)
 
-    // Lazysodium + JNA (AAR re-added after global exclude)
-    implementation(libs.lazysodium.android)
-    implementation("net.java.dev.jna:jna:5.14.0@aar")
-
     // JMRTD / NFC
     implementation(libs.jmrtd)
     implementation(libs.scuba.sc.android)
@@ -111,6 +109,18 @@ dependencies {
 
     // ML Kit Text Recognition
     implementation(libs.mlkit.text.recognition)
+
+    // ML Kit Barcode Scanning
+    implementation(libs.mlkit.barcode.scanning)
+
+    // Ktor WebSocket
+    implementation(libs.ktor.client.websockets)
+
+
+    // WorkManager
+    implementation(libs.work.runtime.ktx)
+    implementation(libs.hilt.work)
+    ksp(libs.hilt.work.compiler)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

@@ -25,7 +25,7 @@ export const TEST_EPHEMERAL_PUBKEY =
 
 // Sample CommerceProposal for intent hash testing
 export const SAMPLE_PROPOSAL = {
-  "@context": "https://schema.identipay.io/v1" as const,
+  "@context": "https://schema.identipay.net/v1" as const,
   "@type": "CommerceProposal" as const,
   transactionId: "550e8400-e29b-41d4-a716-446655440000",
   merchant: {

@@ -2,13 +2,15 @@ package com.identipay.wallet.crypto
 
 import java.math.BigInteger
 import java.security.MessageDigest
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
  * Identity commitment computation matching circuits/identity_registration.circom.
  *
- * commitment = Poseidon(issuerCertHash, docNumberHash, dobHash, userSalt)
+ * commitment = Poseidon(issuerCertHash, personalNumberHash, dobHash, userSalt)
  */
 @Singleton
 class IdentityCommitment @Inject constructor() {
@@ -19,11 +21,11 @@ class IdentityCommitment @Inject constructor() {
      */
     fun compute(
         issuerCertHash: BigInteger,
-        docNumberHash: BigInteger,
+        personalNumberHash: BigInteger,
         dobHash: BigInteger,
         userSalt: BigInteger,
     ): BigInteger {
-        return PoseidonHash.hash4(issuerCertHash, docNumberHash, dobHash, userSalt)
+        return PoseidonHash.hash4(issuerCertHash, personalNumberHash, dobHash, userSalt)
     }
 
     /**
@@ -41,15 +43,27 @@ class IdentityCommitment @Inject constructor() {
      */
     fun computeFromRaw(
         issuerCert: ByteArray,
-        docNumber: String,
+        personalNumber: String,
         dateOfBirth: String,
         userSalt: BigInteger,
     ): BigInteger {
         val md = MessageDigest.getInstance("SHA-256")
         val issuerCertHash = BigInteger(1, md.digest(issuerCert)).mod(PoseidonHash.FIELD_PRIME)
-        val docNumberHash = hashToField(docNumber)
+        val personalNumberHash = hashToField(personalNumber)
         val dobHash = hashToField(dateOfBirth)
-        return compute(issuerCertHash, docNumberHash, dobHash, userSalt)
+        return compute(issuerCertHash, personalNumberHash, dobHash, userSalt)
+    }
+
+    /**
+     * Derive the user salt deterministically from the master seed.
+     * Same seed always produces the same salt, enabling reproducible
+     * identity commitments without storing the salt separately.
+     */
+    fun deriveSaltFromSeed(seed: ByteArray): BigInteger {
+        val mac = Mac.getInstance("HmacSHA512")
+        mac.init(SecretKeySpec(seed, "HmacSHA512"))
+        val derived = mac.doFinal("identity-salt".toByteArray(Charsets.UTF_8))
+        return BigInteger(1, derived.copyOfRange(0, 32)).mod(PoseidonHash.FIELD_PRIME)
     }
 
     /**

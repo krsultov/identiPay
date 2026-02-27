@@ -4,10 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.identipay.wallet.crypto.SeedManager
 import com.identipay.wallet.data.repository.IdentityRepository
+import com.identipay.wallet.data.repository.InitKeysResult
 import com.identipay.wallet.network.TransactionBuilder
 import com.identipay.wallet.nfc.CredentialData
 import com.identipay.wallet.nfc.MrzParser
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,11 +17,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.jmrtd.BACKey
 import javax.inject.Inject
 
 data class IdentityUiState(
-    val mnemonic: List<String> = emptyList(),
     val docNumber: String = "",
     val dateOfBirth: String = "",
     val expiryDate: String = "",
@@ -27,6 +29,11 @@ data class IdentityUiState(
     val bacKey: BACKey? = null,
     val nfcStatus: NfcStatus = NfcStatus.Idle,
     val credentialData: CredentialData? = null,
+    val pin: String = "",
+    val pinConfirm: String = "",
+    val pinError: String? = null,
+    val keyDerivationStatus: KeyDerivationStatus = KeyDerivationStatus.Idle,
+    val reactivatedName: String? = null,
     val chosenName: String = "",
     val nameAvailable: Boolean? = null,
     val nameCheckLoading: Boolean = false,
@@ -39,6 +46,13 @@ enum class NfcStatus {
     Scanning,
     Reading,
     Success,
+    Error,
+}
+
+enum class KeyDerivationStatus {
+    Idle,
+    Deriving,
+    Done,
     Error,
 }
 
@@ -62,20 +76,6 @@ class IdentityViewModel @Inject constructor(
     val uiState: StateFlow<IdentityUiState> = _uiState.asStateFlow()
 
     private var nameCheckJob: Job? = null
-
-    init {
-        // Generate keys if not present
-        if (!identityRepository.hasKeys()) {
-            viewModelScope.launch {
-                try {
-                    val mnemonic = identityRepository.initializeKeys()
-                    _uiState.update { it.copy(mnemonic = mnemonic) }
-                } catch (e: Exception) {
-                    _uiState.update { it.copy(error = e.message) }
-                }
-            }
-        }
-    }
 
     fun updateDocNumber(value: String) {
         _uiState.update { it.copy(docNumber = value) }
@@ -142,6 +142,64 @@ class IdentityViewModel @Inject constructor(
             )
         }
     }
+
+    // --- PIN entry ---
+
+    fun updatePin(value: String) {
+        if (value.length <= 6 && value.all { it.isDigit() }) {
+            _uiState.update { it.copy(pin = value, pinError = null) }
+        }
+    }
+
+    fun updatePinConfirm(value: String) {
+        if (value.length <= 6 && value.all { it.isDigit() }) {
+            _uiState.update { it.copy(pinConfirm = value, pinError = null) }
+        }
+    }
+
+    /**
+     * Validate PINs match, then derive seed from passport + PIN.
+     */
+    fun confirmPin() {
+        val state = _uiState.value
+        if (state.pin.length != 6) {
+            _uiState.update { it.copy(pinError = "PIN must be exactly 6 digits") }
+            return
+        }
+        if (state.pin != state.pinConfirm) {
+            _uiState.update { it.copy(pinError = "PINs do not match") }
+            return
+        }
+        val credential = state.credentialData ?: return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(keyDerivationStatus = KeyDerivationStatus.Deriving) }
+            try {
+                val result = withContext(Dispatchers.Default) {
+                    identityRepository.initializeKeys(credential, state.pin)
+                }
+                val reactivatedName = when (result) {
+                    is InitKeysResult.Reactivated -> result.name
+                    is InitKeysResult.NewRegistration -> null
+                }
+                _uiState.update {
+                    it.copy(
+                        keyDerivationStatus = KeyDerivationStatus.Done,
+                        reactivatedName = reactivatedName,
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        keyDerivationStatus = KeyDerivationStatus.Error,
+                        error = e.message,
+                    )
+                }
+            }
+        }
+    }
+
+    // --- Name picker ---
 
     fun updateChosenName(name: String) {
         val cleanName = name.lowercase().trim()

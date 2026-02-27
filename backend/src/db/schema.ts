@@ -90,6 +90,14 @@ export const announcements = pgTable(
   ],
 );
 
+// Cursor tracking for reliable event polling (replaces unreliable WebSocket subscriptions)
+export const eventCursors = pgTable("event_cursors", {
+  eventType: varchar("event_type", { length: 128 }).primaryKey(),
+  txDigest: varchar("tx_digest", { length: 66 }).notNull(),
+  eventSeq: varchar("event_seq", { length: 20 }).notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const payRequests = pgTable("pay_requests", {
   requestId: uuid("request_id").primaryKey().defaultRandom(),
   recipientName: varchar("recipient_name", { length: 20 }).notNull(),

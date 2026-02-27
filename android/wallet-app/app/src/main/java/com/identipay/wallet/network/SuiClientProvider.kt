@@ -12,13 +12,13 @@ class SuiClientProvider @Inject constructor() {
     companion object {
         // Testnet contract object IDs
         const val PACKAGE_ID =
-            "0x421ef10b138561c401d26a2b425d968462b68c88e2e7038220ecf8d76197ed60"
+            "0xd1e2ab2d699d37ca57f06005328975e4854785e96f44340bdb0eb8257d4136aa"
         const val META_REGISTRY_ID =
-            "0xfbf7d2bbd3648405fb39efb555c87b82a4060b21ba4e8f8eccc46f9f5c5b159f"
+            "0x364ecd9ef42701316f2ce88eee8c55c928dfdeb0403ce582a45adf1406f23306"
         const val SETTLEMENT_STATE_ID =
-            "0x67efba465370c481be98bef8a5a94fb2bd21bbd214314eb9912458e238d7e0e2"
+            "0xee2855a6b4194019cc2091fe4ea1ecbfc18f04d1a3ff9bfbbd4122d9f28404a1"
         const val VERIFICATION_KEY_ID =
-            "0x684794997aa68cee5d8e16f3204f13ac7d3a422ee9b8085fa9abee99deb2e3b9"
+            "0xe8600d373af9019af92139cfd24489cfc7723fcb06dd812697d1f900b9e537a0"
 
         const val SUI_TESTNET_URL = "https://fullnode.testnet.sui.io:443"
     }

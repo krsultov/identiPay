@@ -11,8 +11,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -23,8 +21,6 @@ fun IdentitySetupScreen(
     viewModel: IdentityViewModel,
     onContinue: () -> Unit,
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -53,7 +49,8 @@ fun IdentitySetupScreen(
             text = "To get started, you'll need to:\n\n" +
                     "1. Scan your passport's MRZ with the camera\n" +
                     "2. Tap your NFC passport to read chip data\n" +
-                    "3. Pick a unique @name.idpay handle",
+                    "3. Choose a 6-digit PIN to secure your wallet\n" +
+                    "4. Pick a unique @name.idpay handle",
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Start,
             modifier = Modifier.fillMaxWidth(),
@@ -61,25 +58,14 @@ fun IdentitySetupScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        if (uiState.mnemonic.isNotEmpty()) {
-            Text(
-                text = "Your recovery phrase (write this down!):",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.error,
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = uiState.mnemonic.chunked(6).joinToString("\n") { row ->
-                    row.mapIndexed { i, word ->
-                        "${uiState.mnemonic.indexOf(word) + 1}. $word"
-                    }.joinToString("  ")
-                },
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(8.dp),
-            )
-        }
+        Text(
+            text = "Your wallet keys are derived from your passport + PIN. " +
+                    "No recovery phrase needed \u2014 you can restore your wallet " +
+                    "on any device by scanning the same passport and entering your PIN.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth(),
+        )
 
         Spacer(modifier = Modifier.weight(1f))
 
