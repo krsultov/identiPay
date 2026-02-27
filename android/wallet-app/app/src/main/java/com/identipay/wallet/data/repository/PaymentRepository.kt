@@ -8,6 +8,7 @@ import com.identipay.wallet.data.db.dao.StealthAddressDao
 import com.identipay.wallet.data.db.dao.TransactionDao
 import com.identipay.wallet.data.db.entity.StealthAddressEntity
 import com.identipay.wallet.data.db.entity.TransactionEntity
+import com.identipay.wallet.data.preferences.UserPreferences
 import com.identipay.wallet.data.preferences.WalletKeys
 import com.identipay.wallet.network.BackendApi
 import com.identipay.wallet.network.CreatePayRequest
@@ -26,6 +27,8 @@ class PaymentRepository @Inject constructor(
     private val walletKeys: WalletKeys,
     private val stealthAddressDao: StealthAddressDao,
     private val transactionDao: TransactionDao,
+    private val userPreferences: UserPreferences,
+    private val balanceRepository: dagger.Lazy<BalanceRepository>,
 ) {
     /**
      * Send USDC to a resolved @name.idpay.
@@ -85,6 +88,8 @@ class PaymentRepository @Inject constructor(
         private const val TAG = "PaymentRepository"
         private const val USDC_TYPE =
             "0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC"
+        /** Stop scanning after this many consecutive empty addresses (fresh device recovery). */
+        private const val GAP_LIMIT = 20
     }
 
     /**
@@ -137,11 +142,183 @@ class PaymentRepository @Inject constructor(
             Log.e(TAG, "deriveReceiveAddress: self-scan failed for ${stealth.stealthAddress}")
         }
 
+        // Persist high-water mark so we can re-derive on recovery
+        val currentMax = userPreferences.getReceiveCounterOnce()
+        if (counter >= currentMax) {
+            userPreferences.setReceiveCounter(counter + 1)
+        }
+
         return ReceiveAddress(
             stealthAddress = stealth.stealthAddress,
             ephemeralPubkey = stealth.ephemeralPubkey.toHexString(),
             viewTag = stealth.viewTag,
         )
+    }
+
+    /**
+     * Re-derive receive stealth addresses and recover any missing from the local DB.
+     *
+     * Two modes:
+     * - **Known counter** (same device / DataStore intact): replays 0..highWaterMark,
+     *   re-inserts any that are missing from Room. Cheap — no RPC calls needed.
+     * - **Fresh device** (counter == 0, new install with restored seed): uses a
+     *   BIP44-style gap-limit scan. Derives addresses sequentially and queries
+     *   on-chain balance; stops after [GAP_LIMIT] consecutive empty addresses.
+     *
+     * @return number of addresses recovered
+     */
+    suspend fun recoverReceiveAddresses(): Int {
+        if (!walletKeys.hasKeys()) return 0
+
+        val highWaterMark = userPreferences.getReceiveCounterOnce()
+
+        val spendPub = walletKeys.getSpendPublicKey()
+        val viewPub = walletKeys.getViewPublicKey()
+        val viewPriv = walletKeys.getViewKeyPair().privateKey
+        val spendPriv = walletKeys.getSpendKeyPair().privateKey
+        val seed = viewPriv
+
+        return if (highWaterMark > 0) {
+            // Known counter — replay all indices, no RPC needed
+            recoverRange(0, highWaterMark, spendPub, viewPub, viewPriv, spendPriv, seed)
+        } else {
+            // Fresh device — gap-limit scan with on-chain balance checks
+            recoverWithGapLimit(spendPub, viewPub, viewPriv, spendPriv, seed)
+        }
+    }
+
+    /**
+     * Re-derive addresses for counter indices [from, until) and insert any missing.
+     */
+    private suspend fun recoverRange(
+        from: Int,
+        until: Int,
+        spendPub: ByteArray,
+        viewPub: ByteArray,
+        viewPriv: ByteArray,
+        spendPriv: ByteArray,
+        seed: ByteArray,
+    ): Int {
+        var recovered = 0
+        for (i in from until until) {
+            if (recoverSingleAddress(i, spendPub, viewPub, viewPriv, spendPriv, seed)) {
+                recovered++
+            }
+        }
+        Log.d(TAG, "recoverRange: recovered $recovered of ${until - from} addresses")
+        return recovered
+    }
+
+    /**
+     * Gap-limit scan for fresh device recovery. Derives addresses sequentially,
+     * checks on-chain balance, and stops after [GAP_LIMIT] consecutive addresses
+     * with zero balance.
+     */
+    private suspend fun recoverWithGapLimit(
+        spendPub: ByteArray,
+        viewPub: ByteArray,
+        viewPriv: ByteArray,
+        spendPriv: ByteArray,
+        seed: ByteArray,
+    ): Int {
+        Log.d(TAG, "recoverWithGapLimit: starting gap-limit scan (gap=$GAP_LIMIT)")
+        var recovered = 0
+        var consecutiveEmpty = 0
+        var counter = 0
+
+        while (consecutiveEmpty < GAP_LIMIT) {
+            val stealth = deriveAtCounter(counter, spendPub, viewPub, seed)
+
+            // Check if already in DB
+            val existing = stealthAddressDao.getByAddress(stealth.stealthAddress)
+            if (existing != null) {
+                // Already known — reset gap counter
+                consecutiveEmpty = 0
+                counter++
+                continue
+            }
+
+            // Check on-chain balance
+            val balance = balanceRepository.get().queryBalance(stealth.stealthAddress)
+            if (balance > 0L) {
+                // Has funds — recover it
+                if (recoverSingleAddress(counter, spendPub, viewPub, viewPriv, spendPriv, seed)) {
+                    recovered++
+                }
+                consecutiveEmpty = 0
+            } else {
+                consecutiveEmpty++
+            }
+            counter++
+        }
+
+        // Update persisted counter if we discovered addresses beyond it
+        if (counter - GAP_LIMIT > 0) {
+            val discoveredMax = counter - GAP_LIMIT
+            userPreferences.setReceiveCounter(discoveredMax)
+            Log.d(TAG, "recoverWithGapLimit: updated counter to $discoveredMax")
+        }
+
+        Log.d(TAG, "recoverWithGapLimit: scanned $counter addresses, recovered $recovered")
+        return recovered
+    }
+
+    /**
+     * Derive stealth output at a specific counter index.
+     */
+    private fun deriveAtCounter(
+        counter: Int,
+        spendPub: ByteArray,
+        viewPub: ByteArray,
+        seed: ByteArray,
+    ): com.identipay.wallet.crypto.StealthOutput {
+        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+        mac.init(javax.crypto.spec.SecretKeySpec(seed, "HmacSHA256"))
+        val ephPriv = mac.doFinal("receive-$counter".toByteArray(Charsets.UTF_8))
+        ephPriv[0] = (ephPriv[0].toInt() and 248).toByte()
+        ephPriv[31] = (ephPriv[31].toInt() and 127).toByte()
+        ephPriv[31] = (ephPriv[31].toInt() or 64).toByte()
+        return stealthAddress.derive(spendPub, viewPub, ephPriv)
+    }
+
+    /**
+     * Recover a single receive address at [counter] if missing from DB.
+     * @return true if the address was inserted
+     */
+    private suspend fun recoverSingleAddress(
+        counter: Int,
+        spendPub: ByteArray,
+        viewPub: ByteArray,
+        viewPriv: ByteArray,
+        spendPriv: ByteArray,
+        seed: ByteArray,
+    ): Boolean {
+        val stealth = deriveAtCounter(counter, spendPub, viewPub, seed)
+
+        if (stealthAddressDao.getByAddress(stealth.stealthAddress) != null) return false
+
+        val scanResult = stealthAddress.scan(
+            viewPrivateKey = viewPriv,
+            spendPrivateKey = spendPriv,
+            spendPubkey = spendPub,
+            ephemeralPubkey = stealth.ephemeralPubkey,
+            announcedViewTag = stealth.viewTag,
+            announcedStealthAddress = stealth.stealthAddress,
+        ) ?: return false
+
+        val privKeyEnc = Base64.encodeToString(scanResult.stealthPrivateKey, Base64.NO_WRAP)
+        stealthAddressDao.insert(
+            StealthAddressEntity(
+                stealthAddress = scanResult.stealthAddress,
+                stealthPrivKeyEnc = privKeyEnc,
+                stealthPubkey = scanResult.stealthPubkey.toHexString(),
+                ephemeralPubkey = stealth.ephemeralPubkey.toHexString(),
+                viewTag = stealth.viewTag,
+                createdAt = System.currentTimeMillis(),
+            )
+        )
+        Log.d(TAG, "recoverSingleAddress: recovered counter=$counter addr=${scanResult.stealthAddress}")
+        return true
     }
 
     /**

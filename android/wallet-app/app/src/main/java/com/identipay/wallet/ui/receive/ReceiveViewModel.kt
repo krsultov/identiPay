@@ -2,6 +2,7 @@ package com.identipay.wallet.ui.receive
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.identipay.wallet.data.preferences.UserPreferences
 import com.identipay.wallet.data.repository.PaymentRepository
 import com.identipay.wallet.data.repository.ReceiveAddress
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -21,13 +22,19 @@ data class ReceiveUiState(
 @HiltViewModel
 class ReceiveViewModel @Inject constructor(
     private val paymentRepository: PaymentRepository,
+    private val userPreferences: UserPreferences,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ReceiveUiState())
     val uiState: StateFlow<ReceiveUiState> = _uiState.asStateFlow()
 
     init {
-        generateAddress()
+        viewModelScope.launch {
+            // Start from the persisted high-water mark so we always generate fresh addresses
+            val persisted = userPreferences.getReceiveCounterOnce()
+            _uiState.update { it.copy(counter = persisted) }
+            generateAddress()
+        }
     }
 
     fun generateAddress() {

@@ -9,6 +9,7 @@ import com.identipay.wallet.data.preferences.UserPreferences
 import com.identipay.wallet.data.preferences.WalletKeys
 import com.identipay.wallet.network.BackendApi
 import com.identipay.wallet.network.toHexString
+import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -19,11 +20,42 @@ class AnnouncementRepository @Inject constructor(
     private val walletKeys: WalletKeys,
     private val stealthAddressDao: StealthAddressDao,
     private val userPreferences: UserPreferences,
+    private val paymentRepository: dagger.Lazy<PaymentRepository>,
 ) {
     private var lastCursor: String? = null
 
     companion object {
         private const val TAG = "AnnouncementRepo"
+    }
+
+    /**
+     * Full rescan: resets the cursor and re-scans all announcements from the
+     * beginning. Any stealth addresses that were deleted locally but still
+     * have on-chain announcements will be re-derived and re-saved.
+     *
+     * Use this for user-initiated refreshes so that lost/deleted records are
+     * automatically recovered.
+     *
+     * @return number of new addresses found
+     */
+    suspend fun fullRescan(): Int {
+        Log.d(TAG, "fullRescan: resetting cursor and re-scanning all announcements")
+        lastCursor = null
+
+        // Re-derive any self-generated receive addresses that are missing from DB
+        val recoveredReceive = try {
+            paymentRepository.get().recoverReceiveAddresses()
+        } catch (e: Exception) {
+            Log.e(TAG, "fullRescan: receive address recovery failed", e)
+            0
+        }
+
+        // Re-scan on-chain announcements (P2P sends, settlements)
+        val recoveredAnnouncements = scanNew()
+
+        val total = recoveredReceive + recoveredAnnouncements
+        Log.d(TAG, "fullRescan: recovered $recoveredReceive receive + $recoveredAnnouncements announced = $total total")
+        return total
     }
 
     /**
@@ -97,7 +129,7 @@ class AnnouncementRepository @Inject constructor(
                             stealthPubkey = result.stealthPubkey.toHexString(),
                             ephemeralPubkey = announcement.ephemeralPubkey,
                             viewTag = announcement.viewTag,
-                            createdAt = announcement.timestamp,
+                            createdAt = parseTimestamp(announcement.timestamp),
                         )
                     )
                     found++
@@ -115,6 +147,12 @@ class AnnouncementRepository @Inject constructor(
     }
 
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
+
+    private fun parseTimestamp(iso: String): Long = try {
+        Instant.parse(iso).toEpochMilli()
+    } catch (_: Exception) {
+        System.currentTimeMillis()
+    }
 
     private fun hexToBytes(hex: String): ByteArray {
         val clean = if (hex.startsWith("0x")) hex.substring(2) else hex

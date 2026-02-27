@@ -67,8 +67,8 @@ class HomeViewModel @Inject constructor(
             Log.d(TAG, "refresh: starting")
             _uiState.update { it.copy(isRefreshing = true) }
             try {
-                val found = announcementRepository.scanNew()
-                Log.d(TAG, "refresh: scanNew returned $found new addresses")
+                val found = announcementRepository.fullRescan()
+                Log.d(TAG, "refresh: fullRescan returned $found new/recovered addresses")
                 balanceRepository.refreshAll()
                 Log.d(TAG, "refresh: refreshAll completed")
             } catch (e: Exception) {

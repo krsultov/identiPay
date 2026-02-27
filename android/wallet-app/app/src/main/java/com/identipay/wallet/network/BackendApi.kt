@@ -39,7 +39,7 @@ data class Announcement(
     val stealthAddress: String,
     val viewTag: Int,
     val txDigest: String,
-    val timestamp: Long,
+    val timestamp: String,
 )
 
 @Serializable

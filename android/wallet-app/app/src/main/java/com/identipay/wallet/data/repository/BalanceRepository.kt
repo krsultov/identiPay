@@ -77,7 +77,7 @@ class BalanceRepository @Inject constructor(
     /**
      * Query the USDC balance at a single Sui address via JSON-RPC.
      */
-    private suspend fun queryBalance(address: String): Long {
+    suspend fun queryBalance(address: String): Long {
         return try {
             val jsonBody = """{"jsonrpc":"2.0","id":1,"method":"suix_getBalance","params":["$address","$USDC_COIN_TYPE"]}"""
 //            Log.d(TAG, "queryBalance: POST $SUI_RPC body=$jsonBody")
