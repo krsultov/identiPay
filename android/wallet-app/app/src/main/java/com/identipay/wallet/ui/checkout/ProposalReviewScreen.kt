@@ -26,11 +26,16 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.fragment.app.FragmentActivity
 import com.identipay.wallet.network.CommerceProposal
+import com.identipay.wallet.ui.common.BiometricHelper
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,11 +79,24 @@ fun ProposalReviewScreen(
                 }
             }
             uiState.proposal != null -> {
+                val context = LocalContext.current
+                val scope = rememberCoroutineScope()
                 ProposalContent(
                     proposal = uiState.proposal!!,
                     step = uiState.step,
                     error = uiState.error,
-                    onPay = viewModel::pay,
+                    onPay = {
+                        scope.launch {
+                            val result = BiometricHelper.authenticate(
+                                activity = context as FragmentActivity,
+                                title = "Confirm Payment",
+                                subtitle = "Verify your identity to pay ${uiState.proposal!!.amount.value} ${uiState.proposal!!.amount.currency}",
+                            )
+                            if (result.isSuccess) {
+                                viewModel.pay()
+                            }
+                        }
+                    },
                     onBack = onBack,
                     modifier = Modifier.padding(padding),
                 )

@@ -85,7 +85,7 @@ fun HistoryScreen(
 
 @Composable
 private fun TransactionCard(tx: TransactionEntity) {
-    val isSend = tx.type == "send"
+    val isSend = tx.type == "send" || tx.type == "commerce"
     val amountStr = formatAmount(tx.amount)
     val dateStr = SimpleDateFormat("MMM d, HH:mm", Locale.US).format(Date(tx.timestamp))
 

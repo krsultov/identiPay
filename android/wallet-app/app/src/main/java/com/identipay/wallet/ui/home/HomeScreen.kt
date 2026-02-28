@@ -122,7 +122,17 @@ fun HomeScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedButton(
+                    onClick = viewModel::refresh,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !uiState.isRefreshing,
+                ) {
+                    Text(if (uiState.isRefreshing) "Recovering..." else "Recover Transactions")
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
 
                 // Recent transactions header
                 if (uiState.recentTransactions.isNotEmpty()) {
@@ -165,7 +175,7 @@ fun HomeScreen(
 
 @Composable
 private fun RecentTransactionCard(tx: TransactionEntity) {
-    val isSend = tx.type == "send"
+    val isSend = tx.type == "send" || tx.type == "commerce"
     val whole = tx.amount / 1_000_000
     val frac = (tx.amount % 1_000_000) / 10_000
     val amountStr = "%d.%02d".format(whole, frac)

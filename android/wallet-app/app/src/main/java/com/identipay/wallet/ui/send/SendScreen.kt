@@ -23,10 +23,15 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.fragment.app.FragmentActivity
+import com.identipay.wallet.ui.common.BiometricHelper
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -102,8 +107,21 @@ fun SendScreen(
 
             Spacer(modifier = Modifier.weight(1f))
 
+            val context = LocalContext.current
+            val scope = rememberCoroutineScope()
             Button(
-                onClick = viewModel::send,
+                onClick = {
+                    scope.launch {
+                        val result = BiometricHelper.authenticate(
+                            activity = context as FragmentActivity,
+                            title = "Confirm Transfer",
+                            subtitle = "Verify your identity to send ${uiState.amount} USDC",
+                        )
+                        if (result.isSuccess) {
+                            viewModel.send()
+                        }
+                    }
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 24.dp),

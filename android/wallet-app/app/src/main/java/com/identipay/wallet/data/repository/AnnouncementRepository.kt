@@ -4,10 +4,13 @@ import android.util.Base64
 import android.util.Log
 import com.identipay.wallet.crypto.StealthAddress
 import com.identipay.wallet.data.db.dao.StealthAddressDao
+import com.identipay.wallet.data.db.dao.TransactionDao
 import com.identipay.wallet.data.db.entity.StealthAddressEntity
+import com.identipay.wallet.data.db.entity.TransactionEntity
 import com.identipay.wallet.data.preferences.UserPreferences
 import com.identipay.wallet.data.preferences.WalletKeys
 import com.identipay.wallet.network.BackendApi
+import com.identipay.wallet.network.SuiClientProvider
 import com.identipay.wallet.network.toHexString
 import java.time.Instant
 import javax.inject.Inject
@@ -19,6 +22,8 @@ class AnnouncementRepository @Inject constructor(
     private val stealthAddress: StealthAddress,
     private val walletKeys: WalletKeys,
     private val stealthAddressDao: StealthAddressDao,
+    private val transactionDao: TransactionDao,
+    private val balanceRepository: dagger.Lazy<BalanceRepository>,
     private val userPreferences: UserPreferences,
     private val paymentRepository: dagger.Lazy<PaymentRepository>,
 ) {
@@ -53,8 +58,16 @@ class AnnouncementRepository @Inject constructor(
         // Re-scan on-chain announcements (P2P sends, settlements)
         val recoveredAnnouncements = scanNew()
 
-        val total = recoveredReceive + recoveredAnnouncements
-        Log.d(TAG, "fullRescan: recovered $recoveredReceive receive + $recoveredAnnouncements announced = $total total")
+        // Recover commerce artifacts (ReceiptObjects) from on-chain
+        val recoveredArtifacts = try {
+            recoverCommerceArtifacts()
+        } catch (e: Exception) {
+            Log.e(TAG, "fullRescan: artifact recovery failed", e)
+            0
+        }
+
+        val total = recoveredReceive + recoveredAnnouncements + recoveredArtifacts
+        Log.d(TAG, "fullRescan: recovered $recoveredReceive receive + $recoveredAnnouncements announced + $recoveredArtifacts artifacts = $total total")
         return total
     }
 
@@ -95,44 +108,80 @@ class AnnouncementRepository @Inject constructor(
             Log.d(TAG, "scanNew: page $pageNum has ${page.announcements.size} announcements, hasMore=${page.hasMore}")
 
             for (announcement in page.announcements) {
-                // Skip if we already have this address
-                if (stealthAddressDao.getByAddress(announcement.stealthAddress) != null) continue
+                // Check if we already have this address AND a transaction for it
+                val existingAddr = stealthAddressDao.getByAddress(announcement.stealthAddress)
+                val existingTx = transactionDao.getByDigest(announcement.txDigest)
 
-                val ephPubBytes = hexToBytes(announcement.ephemeralPubkey)
+                // Fully known — skip
+                if (existingAddr != null && existingTx != null) continue
 
-                val result = try {
-                    stealthAddress.scan(
-                        viewPrivateKey = viewKeyPair.privateKey,
-                        spendPrivateKey = spendKeyPair.privateKey,
-                        spendPubkey = spendKeyPair.publicKey,
-                        ephemeralPubkey = ephPubBytes,
-                        announcedViewTag = announcement.viewTag,
-                        announcedStealthAddress = announcement.stealthAddress,
-                    )
-                } catch (e: Exception) {
-                    Log.e(TAG, "scanNew: scan failed for ${announcement.stealthAddress}", e)
-                    null
+                // If address is unknown, perform ECDH scan to check if it's ours
+                val isOurs = if (existingAddr != null) {
+                    true
+                } else {
+                    val ephPubBytes = hexToBytes(announcement.ephemeralPubkey)
+                    val result = try {
+                        stealthAddress.scan(
+                            viewPrivateKey = viewKeyPair.privateKey,
+                            spendPrivateKey = spendKeyPair.privateKey,
+                            spendPubkey = spendKeyPair.publicKey,
+                            ephemeralPubkey = ephPubBytes,
+                            announcedViewTag = announcement.viewTag,
+                            announcedStealthAddress = announcement.stealthAddress,
+                        )
+                    } catch (e: Exception) {
+                        Log.e(TAG, "scanNew: scan failed for ${announcement.stealthAddress}", e)
+                        null
+                    }
+
+                    if (result != null) {
+                        Log.d(TAG, "scanNew: MATCH found! stealthAddr=${result.stealthAddress}")
+                        val privKeyEnc = Base64.encodeToString(
+                            result.stealthPrivateKey,
+                            Base64.NO_WRAP,
+                        )
+                        stealthAddressDao.insert(
+                            StealthAddressEntity(
+                                stealthAddress = result.stealthAddress,
+                                stealthPrivKeyEnc = privKeyEnc,
+                                stealthPubkey = result.stealthPubkey.toHexString(),
+                                ephemeralPubkey = announcement.ephemeralPubkey,
+                                viewTag = announcement.viewTag,
+                                createdAt = parseTimestamp(announcement.timestamp),
+                            )
+                        )
+                        found++
+                        true
+                    } else {
+                        false
+                    }
                 }
 
-                if (result != null) {
-                    Log.d(TAG, "scanNew: MATCH found! stealthAddr=${result.stealthAddress}")
-                    // Encrypt stealth private key before storing
-                    val privKeyEnc = Base64.encodeToString(
-                        result.stealthPrivateKey,
-                        Base64.NO_WRAP,
-                    )
-
-                    stealthAddressDao.insert(
-                        StealthAddressEntity(
-                            stealthAddress = result.stealthAddress,
-                            stealthPrivKeyEnc = privKeyEnc,
-                            stealthPubkey = result.stealthPubkey.toHexString(),
-                            ephemeralPubkey = announcement.ephemeralPubkey,
-                            viewTag = announcement.viewTag,
-                            createdAt = parseTimestamp(announcement.timestamp),
+                // Recover the transaction record if missing
+                if (isOurs && existingTx == null) {
+                    val txInfo = try {
+                        balanceRepository.get().queryTransactionInfo(
+                            announcement.txDigest,
+                            announcement.stealthAddress,
                         )
-                    )
-                    found++
+                    } catch (e: Exception) {
+                        Log.e(TAG, "scanNew: tx query failed for ${announcement.txDigest}", e)
+                        null
+                    }
+
+                    if (txInfo != null && txInfo.amount > 0L) {
+                        transactionDao.insert(
+                            TransactionEntity(
+                                txDigest = txInfo.txDigest,
+                                type = txInfo.type,
+                                amount = txInfo.amount,
+                                counterpartyName = txInfo.merchantName,
+                                stealthAddress = announcement.stealthAddress,
+                                timestamp = txInfo.timestamp,
+                            )
+                        )
+                        Log.d(TAG, "scanNew: recovered ${txInfo.type} tx ${txInfo.txDigest} amount=${txInfo.amount}")
+                    }
                 }
             }
 
@@ -144,6 +193,61 @@ class AnnouncementRepository @Inject constructor(
         val totalInDb = stealthAddressDao.getAllOnce().size
         Log.d(TAG, "scanNew: total stealth addresses in DB = $totalInDb")
         return found
+    }
+
+    /**
+     * Query on-chain ReceiptObjects owned by each stealth address.
+     * For any receipt whose settlement transaction is not already recorded,
+     * create a "commerce" TransactionEntity from the SettlementEvent data.
+     *
+     * This catches commerce transactions that don't have USDC balance on
+     * the receipt address (USDC goes to the merchant, receipts go to buyer).
+     */
+    suspend fun recoverCommerceArtifacts(): Int {
+        if (!walletKeys.hasKeys()) return 0
+
+        val receiptType = "${SuiClientProvider.PACKAGE_ID}::receipt::ReceiptObject"
+        val addresses = stealthAddressDao.getAllOnce()
+        var recovered = 0
+
+        for (addr in addresses) {
+            val receiptTxDigests = try {
+                balanceRepository.get().queryOwnedReceipts(addr.stealthAddress, receiptType)
+            } catch (e: Exception) {
+                Log.e(TAG, "recoverCommerceArtifacts: query failed for ${addr.stealthAddress}", e)
+                continue
+            }
+
+            for (txDigest in receiptTxDigests) {
+                // Skip if we already have this transaction
+                if (transactionDao.getByDigest(txDigest) != null) continue
+
+                val txInfo = try {
+                    balanceRepository.get().queryTransactionInfo(txDigest, addr.stealthAddress)
+                } catch (e: Exception) {
+                    Log.e(TAG, "recoverCommerceArtifacts: tx query failed for $txDigest", e)
+                    continue
+                }
+
+                if (txInfo != null && txInfo.amount > 0L) {
+                    transactionDao.insert(
+                        TransactionEntity(
+                            txDigest = txInfo.txDigest,
+                            type = txInfo.type,
+                            amount = txInfo.amount,
+                            counterpartyName = txInfo.merchantName,
+                            stealthAddress = addr.stealthAddress,
+                            timestamp = txInfo.timestamp,
+                        )
+                    )
+                    recovered++
+                    Log.d(TAG, "recoverCommerceArtifacts: recovered ${txInfo.type} tx $txDigest amount=${txInfo.amount}")
+                }
+            }
+        }
+
+        Log.d(TAG, "recoverCommerceArtifacts: recovered $recovered transactions")
+        return recovered
     }
 
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }

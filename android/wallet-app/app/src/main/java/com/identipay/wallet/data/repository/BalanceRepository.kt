@@ -26,6 +26,70 @@ private data class BalanceResult(
     val totalBalance: String = "0",
 )
 
+@Serializable
+private data class SuiTxResponse(
+    val result: TxResult? = null,
+)
+
+@Serializable
+private data class TxResult(
+    val balanceChanges: List<BalanceChange>? = null,
+    val events: List<SuiEvent>? = null,
+    val timestampMs: String? = null,
+)
+
+@Serializable
+private data class BalanceChange(
+    val owner: BalanceOwner? = null,
+    val coinType: String = "",
+    val amount: String = "0",
+)
+
+@Serializable
+private data class BalanceOwner(
+    @kotlinx.serialization.SerialName("AddressOwner")
+    val addressOwner: String? = null,
+)
+
+@Serializable
+private data class SuiEvent(
+    val type: String = "",
+    val parsedJson: kotlinx.serialization.json.JsonObject? = null,
+)
+
+// suix_getOwnedObjects response types
+@Serializable
+private data class OwnedObjectsResponse(
+    val result: OwnedObjectsResult? = null,
+)
+
+@Serializable
+private data class OwnedObjectsResult(
+    val data: List<OwnedObjectData> = emptyList(),
+    val hasNextPage: Boolean = false,
+    val nextCursor: String? = null,
+)
+
+@Serializable
+private data class OwnedObjectData(
+    val data: ObjectInfo? = null,
+)
+
+@Serializable
+private data class ObjectInfo(
+    val objectId: String = "",
+    val previousTransaction: String? = null,
+)
+
+data class RecoveredTransaction(
+    val txDigest: String,
+    val type: String,     // "receive" or "commerce"
+    val amount: Long,
+    val merchantName: String? = null,
+    val stealthAddress: String,
+    val timestamp: Long,
+)
+
 @Singleton
 class BalanceRepository @Inject constructor(
     private val stealthAddressDao: StealthAddressDao,
@@ -72,6 +136,81 @@ class BalanceRepository @Inject constructor(
         }
         val dbTotal = stealthAddressDao.getAllOnce().sumOf { it.balanceUsdc }
 //        Log.d(TAG, "refreshAll: DB total after update = $dbTotal")
+    }
+
+    /**
+     * Query transaction info: checks for SettlementEvent (commerce) first,
+     * then falls back to USDC balance change (P2P receive).
+     */
+    suspend fun queryTransactionInfo(txDigest: String, stealthAddress: String): RecoveredTransaction? {
+        return try {
+            val jsonBody = """{"jsonrpc":"2.0","id":1,"method":"sui_getTransactionBlock","params":["$txDigest",{"showEvents":true,"showBalanceChanges":true}]}"""
+            val httpResponse = httpClient.post(SUI_RPC) {
+                setBody(TextContent(jsonBody, ContentType.Application.Json))
+            }
+            val rawBody = httpResponse.body<String>()
+            val parsed = json.decodeFromString<SuiTxResponse>(rawBody)
+            val result = parsed.result ?: return null
+            val timestamp = result.timestampMs?.toLongOrNull() ?: System.currentTimeMillis()
+
+            // Check for SettlementEvent → commerce transaction
+            val settlementEvent = result.events?.firstOrNull { it.type.contains("::settlement::SettlementEvent") }
+            if (settlementEvent != null) {
+                val eventJson = settlementEvent.parsedJson
+                val amount = eventJson?.get("amount")?.let {
+                    when (it) {
+                        is kotlinx.serialization.json.JsonPrimitive -> it.content.toLongOrNull()
+                        else -> null
+                    }
+                } ?: 0L
+                return RecoveredTransaction(
+                    txDigest = txDigest,
+                    type = "commerce",
+                    amount = amount,
+                    stealthAddress = stealthAddress,
+                    timestamp = timestamp,
+                )
+            }
+
+            // Fall back to USDC balance change → P2P receive
+            val change = result.balanceChanges?.firstOrNull { bc ->
+                bc.coinType == USDC_COIN_TYPE &&
+                        bc.owner?.addressOwner == stealthAddress
+            }
+            val amount = change?.amount?.toLongOrNull()?.let { kotlin.math.abs(it) }
+            if (amount != null && amount > 0L) {
+                return RecoveredTransaction(
+                    txDigest = txDigest,
+                    type = "receive",
+                    amount = amount,
+                    stealthAddress = stealthAddress,
+                    timestamp = timestamp,
+                )
+            }
+            null
+        } catch (e: Exception) {
+            Log.e(TAG, "queryTransactionInfo: FAILED for tx=$txDigest", e)
+            null
+        }
+    }
+
+    /**
+     * Query ReceiptObjects owned by a stealth address.
+     * Returns the creating transaction digest for each receipt found.
+     */
+    suspend fun queryOwnedReceipts(address: String, receiptType: String): List<String> {
+        return try {
+            val jsonBody = """{"jsonrpc":"2.0","id":1,"method":"suix_getOwnedObjects","params":["$address",{"filter":{"StructType":"$receiptType"},"options":{"showPreviousTransaction":true}},null,50]}"""
+            val httpResponse = httpClient.post(SUI_RPC) {
+                setBody(TextContent(jsonBody, ContentType.Application.Json))
+            }
+            val rawBody = httpResponse.body<String>()
+            val parsed = json.decodeFromString<OwnedObjectsResponse>(rawBody)
+            parsed.result?.data?.mapNotNull { it.data?.previousTransaction } ?: emptyList()
+        } catch (e: Exception) {
+            Log.e(TAG, "queryOwnedReceipts: FAILED for $address", e)
+            emptyList()
+        }
     }
 
     /**

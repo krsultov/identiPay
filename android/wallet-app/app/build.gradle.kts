@@ -116,6 +116,9 @@ dependencies {
     // Ktor WebSocket
     implementation(libs.ktor.client.websockets)
 
+    // Biometric
+    implementation(libs.androidx.biometric)
+
 
     // WorkManager
     implementation(libs.work.runtime.ktx)
