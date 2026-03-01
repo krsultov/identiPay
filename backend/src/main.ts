@@ -28,6 +28,9 @@ const suiService = new SuiService({
   settlementStateId: config.settlementStateId,
   adminSecretKey: config.adminSecretKey,
   verificationKeyId: config.verificationKeyId,
+  ageCheckVkId: config.ageCheckVkId,
+  poolSpendVkId: config.poolSpendVkId,
+  shieldedPoolId: config.shieldedPoolId,
 });
 
 // Create Hono app

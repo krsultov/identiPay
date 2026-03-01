@@ -17,6 +17,9 @@ export const config = {
   settlementStateId: env("SETTLEMENT_STATE_ID"),
   adminSecretKey: env("ADMIN_SECRET_KEY"),
   verificationKeyId: env("VERIFICATION_KEY_ID"),
+  ageCheckVkId: env("AGE_CHECK_VK_ID", ""),
+  poolSpendVkId: env("POOL_SPEND_VK_ID", ""),
+  shieldedPoolId: env("SHIELDED_POOL_ID", ""),
 } as const;
 
 export type Config = typeof config;

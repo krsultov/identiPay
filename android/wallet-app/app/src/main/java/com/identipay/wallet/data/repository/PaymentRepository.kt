@@ -20,6 +20,11 @@ import com.identipay.wallet.network.toHexString
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Callback for pool-on-merge progress updates.
+ */
+typealias MergeProgressCallback = (step: String) -> Unit
+
 @Singleton
 class PaymentRepository @Inject constructor(
     private val backendApi: BackendApi,
@@ -29,6 +34,7 @@ class PaymentRepository @Inject constructor(
     private val transactionDao: TransactionDao,
     private val userPreferences: UserPreferences,
     private val balanceRepository: dagger.Lazy<BalanceRepository>,
+    private val poolRepository: dagger.Lazy<PoolRepository>,
 ) {
     /**
      * Send USDC to a resolved @name.idpay.
@@ -55,8 +61,51 @@ class PaymentRepository @Inject constructor(
 
         // 3. Find a source stealth address with sufficient balance
         val sources = stealthAddressDao.getWithBalance()
-        val source = sources.firstOrNull { it.balanceUsdc >= amountMicros }
-            ?: return SendResult.Error("Insufficient balance")
+        var source = sources.firstOrNull { it.balanceUsdc >= amountMicros }
+
+        // Pool-on-merge: deposit into shielded pool, then withdraw to a fresh address
+        if (source == null) {
+            val totalBalance = sources.sumOf { it.balanceUsdc }
+            if (totalBalance < amountMicros) {
+                return SendResult.Error("Insufficient balance")
+            }
+
+            Log.d(TAG, "Pool-on-merge: merging from ${sources.size} addresses via shielded pool")
+
+            // 1. Deposit all sources into the pool
+            for (src in sources) {
+                if (src.balanceUsdc <= 0) continue
+                val privKey = Base64.decode(src.stealthPrivKeyEnc, Base64.NO_WRAP)
+                val result = poolRepository.get().deposit(src.balanceUsdc, src.stealthAddress, privKey)
+                if (result is PoolResult.Error) {
+                    return SendResult.Error("Pool deposit failed: ${result.message}")
+                }
+                stealthAddressDao.updateBalance(src.stealthAddress, 0)
+            }
+
+            // 2. Derive a fresh stealth address for withdrawal
+            val counter = userPreferences.getReceiveCounterOnce()
+            val mergeAddr = deriveReceiveAddress(counter)
+
+            // 3. Withdraw each note from the pool to the fresh address
+            val unspentNotes = poolRepository.get().getUnspentNotes()
+            var withdrawnTotal = 0L
+            for (note in unspentNotes) {
+                val result = poolRepository.get().withdraw(
+                    noteId = note.id,
+                    recipientAddress = mergeAddr.stealthAddress,
+                    amount = note.amount,
+                )
+                if (result is PoolResult.Error) {
+                    return SendResult.Error("Pool withdraw failed: ${result.message}")
+                }
+                withdrawnTotal += note.amount
+            }
+
+            stealthAddressDao.updateBalance(mergeAddr.stealthAddress, withdrawnTotal)
+            source = stealthAddressDao.getByAddress(mergeAddr.stealthAddress)
+                ?: return SendResult.Error("Pool merge completed but balance not yet available")
+        }
 
         // 4. Build and execute via gas sponsorship
         val sourcePrivKey = Base64.decode(source.stealthPrivKeyEnc, Base64.NO_WRAP)

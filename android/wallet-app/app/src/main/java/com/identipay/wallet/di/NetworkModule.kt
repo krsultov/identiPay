@@ -28,6 +28,7 @@ object NetworkModule {
                 json(Json {
                     ignoreUnknownKeys = true
                     isLenient = true
+                    encodeDefaults = true
                 })
             }
             defaultRequest {

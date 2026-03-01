@@ -122,6 +122,19 @@ data class GasSponsorSettlementRequest(
 )
 
 @Serializable
+data class GasSponsorPoolWithdrawRequest(
+    val type: String = "pool_withdraw",
+    val senderAddress: String,
+    val coinType: String,
+    val amount: String,
+    val recipient: String,
+    val nullifier: List<Int>,
+    val changeCommitment: List<Int>,
+    val zkProof: List<Int>,
+    val zkPublicInputs: List<Int>,
+)
+
+@Serializable
 data class GasSponsorResponse(val txBytes: String)
 
 @Serializable
@@ -294,11 +307,33 @@ class BackendApi @Inject constructor(
     }
 
     /**
+     * Request gas-sponsored pool withdraw transaction.
+     * POST /transactions/gas-sponsor
+     */
+    suspend fun sponsorPoolWithdraw(request: GasSponsorPoolWithdrawRequest): GasSponsorResponse {
+        return httpClient.post("transactions/gas-sponsor") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.body()
+    }
+
+    /**
      * Submit a sponsored transaction with sender signature.
      * POST /transactions/submit
      */
     suspend fun submitSponsoredTx(request: SubmitTxRequest): SubmitTxResponse {
         return httpClient.post("transactions/submit") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.body()
+    }
+
+    /**
+     * Submit a pool withdraw transaction (backend signs as both sender and gas owner).
+     * POST /transactions/submit-pool
+     */
+    suspend fun submitPoolWithdraw(request: SubmitTxRequest): SubmitTxResponse {
+        return httpClient.post("transactions/submit-pool") {
             contentType(ContentType.Application.Json)
             setBody(request)
         }.body()

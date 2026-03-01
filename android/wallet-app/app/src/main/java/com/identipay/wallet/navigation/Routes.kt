@@ -22,4 +22,9 @@ sealed class Route(val route: String) {
         fun create(txId: String, txDigest: String) = "confirm/$txId/$txDigest"
     }
     object StealthAddresses : Route("stealth_addresses")
+    object TransactionDetail : Route("transaction_detail/{txDigest}") {
+        fun create(txDigest: String) = "transaction_detail/$txDigest"
+    }
+    object Settings : Route("settings")
+    object Artifacts : Route("artifacts")
 }

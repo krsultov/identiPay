@@ -34,6 +34,24 @@ class ProofGenerator @Inject constructor(
         generateProof("identity_registration", input.toJson())
     }
 
+    /**
+     * Generate an age check proof for age-gated checkout.
+     */
+    suspend fun generateAgeProof(
+        input: AgeCheckInput,
+    ): ProofResult = withContext(Dispatchers.Main) {
+        generateProof("age_check", input.toJson())
+    }
+
+    /**
+     * Generate a pool spend proof for shielded pool withdrawal.
+     */
+    suspend fun generatePoolProof(
+        input: PoolSpendInput,
+    ): ProofResult = withContext(Dispatchers.Main) {
+        generateProof("pool_spend", input.toJson())
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     private suspend fun generateProof(circuitName: String, inputJson: String): ProofResult {
         val deferred = CompletableDeferred<ProofResult>()

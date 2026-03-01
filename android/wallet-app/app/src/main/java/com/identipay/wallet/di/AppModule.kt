@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.room.Room
 import com.identipay.wallet.data.db.AppDatabase
+import com.identipay.wallet.data.db.dao.NoteDao
 import com.identipay.wallet.data.db.dao.StealthAddressDao
 import com.identipay.wallet.data.db.dao.TransactionDao
 import dagger.Module
@@ -41,7 +42,9 @@ object AppModule {
             context,
             AppDatabase::class.java,
             "identipay.db",
-        ).build()
+        )
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
+            .build()
     }
 
     @Provides
@@ -49,4 +52,7 @@ object AppModule {
 
     @Provides
     fun provideTransactionDao(db: AppDatabase): TransactionDao = db.transactionDao()
+
+    @Provides
+    fun provideNoteDao(db: AppDatabase): NoteDao = db.noteDao()
 }

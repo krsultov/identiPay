@@ -119,6 +119,9 @@ dependencies {
     // Biometric
     implementation(libs.androidx.biometric)
 
+    // ZXing QR Code generation
+    implementation(libs.zxing.core)
+
 
     // WorkManager
     implementation(libs.work.runtime.ktx)

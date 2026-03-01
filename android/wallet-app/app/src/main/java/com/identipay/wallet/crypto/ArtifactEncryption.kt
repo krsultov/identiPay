@@ -111,4 +111,87 @@ class ArtifactEncryption @Inject constructor() {
             ephemeralPubkey = ephPub,
         )
     }
+
+    /**
+     * Decrypt an artifact as the buyer (stealth key holder).
+     *
+     * Recomputes the same ephemeral key deterministically, then ECDH with merchant pubkey.
+     *
+     * @param stealthPrivKey The buyer's stealth private key (32 bytes)
+     * @param merchantPubKey The merchant's X25519 public key (32 bytes)
+     * @param ciphertext The encrypted data (including GCM tag)
+     * @param nonce The 12-byte GCM nonce
+     */
+    fun decrypt(
+        stealthPrivKey: ByteArray,
+        merchantPubKey: ByteArray,
+        ciphertext: ByteArray,
+        nonce: ByteArray,
+    ): ByteArray {
+        // 1. Re-derive deterministic ephemeral private key (same as encrypt)
+        val sha256 = MessageDigest.getInstance("SHA-256")
+        sha256.update(stealthPrivKey)
+        sha256.update(EPH_DOMAIN)
+        val ephPriv = sha256.digest()
+
+        // Apply X25519 clamping
+        ephPriv[0] = (ephPriv[0].toInt() and 248).toByte()
+        ephPriv[31] = (ephPriv[31].toInt() and 127).toByte()
+        ephPriv[31] = (ephPriv[31].toInt() or 64).toByte()
+
+        // 2. ECDH shared secret: e * K_merchant
+        val shared = ByteArray(32)
+        X25519.scalarMult(ephPriv, 0, merchantPubKey, 0, shared, 0)
+
+        // 3. Derive encryption key
+        val sha256Enc = MessageDigest.getInstance("SHA-256")
+        sha256Enc.update(shared)
+        sha256Enc.update(ENC_DOMAIN)
+        val encKey = sha256Enc.digest()
+
+        // 4. AES-256-GCM decrypt
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(
+            Cipher.DECRYPT_MODE,
+            SecretKeySpec(encKey, "AES"),
+            GCMParameterSpec(GCM_TAG_BITS, nonce),
+        )
+        return cipher.doFinal(ciphertext)
+    }
+
+    /**
+     * Decrypt an artifact as the merchant.
+     *
+     * Uses ECDH: k_merchant * E (ephemeral pubkey from the buyer).
+     *
+     * @param merchantPrivKey The merchant's X25519 private key (32 bytes)
+     * @param ephemeralPubkey The buyer's ephemeral public key from EncryptedArtifact
+     * @param ciphertext The encrypted data (including GCM tag)
+     * @param nonce The 12-byte GCM nonce
+     */
+    fun decryptAsMerchant(
+        merchantPrivKey: ByteArray,
+        ephemeralPubkey: ByteArray,
+        ciphertext: ByteArray,
+        nonce: ByteArray,
+    ): ByteArray {
+        // 1. ECDH shared secret: k_merchant * E
+        val shared = ByteArray(32)
+        X25519.scalarMult(merchantPrivKey, 0, ephemeralPubkey, 0, shared, 0)
+
+        // 2. Derive encryption key
+        val sha256Enc = MessageDigest.getInstance("SHA-256")
+        sha256Enc.update(shared)
+        sha256Enc.update(ENC_DOMAIN)
+        val encKey = sha256Enc.digest()
+
+        // 3. AES-256-GCM decrypt
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(
+            Cipher.DECRYPT_MODE,
+            SecretKeySpec(encKey, "AES"),
+            GCMParameterSpec(GCM_TAG_BITS, nonce),
+        )
+        return cipher.doFinal(ciphertext)
+    }
 }

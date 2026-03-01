@@ -19,6 +19,9 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE txDigest = :digest")
     suspend fun getByDigest(digest: String): TransactionEntity?
 
+    @Query("SELECT * FROM transactions WHERE type = 'commerce' ORDER BY timestamp DESC")
+    fun getCommerce(): Flow<List<TransactionEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(entity: TransactionEntity)
 }

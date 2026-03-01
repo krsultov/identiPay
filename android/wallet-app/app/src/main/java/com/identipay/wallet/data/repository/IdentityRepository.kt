@@ -93,11 +93,15 @@ class IdentityRepository @Inject constructor(
             userSalt,
         )
 
+        // Persist DOB components (MRZ format YYMMDD) for age proof generation
+        persistDob(credentialData.rawDateOfBirth)
+
         // Check if this commitment is already registered on-chain
         val existingName = lookupNameByCommitment(commitment)
         if (existingName != null) {
             // Reactivation: store recovered state locally
             userPreferences.setUserSalt(userSalt.toString())
+            userPreferences.setIdentityCommitment(commitment.toString())
             userPreferences.setRegisteredName(existingName)
             userPreferences.setOnboarded(true)
             return InitKeysResult.Reactivated(existingName)
@@ -161,6 +165,7 @@ class IdentityRepository @Inject constructor(
 
         // 7. Store locally
         userPreferences.setRegisteredName(name)
+        userPreferences.setIdentityCommitment(commitment.toString())
         userPreferences.setOnboarded(true)
 
         return response.txDigest
@@ -248,6 +253,20 @@ class IdentityRepository @Inject constructor(
         val commitmentsFields = commitments["fields"]?.jsonObject ?: return null
         val id = commitmentsFields["id"]?.jsonObject ?: return null
         return id["id"]?.jsonPrimitive?.content
+    }
+
+    // ── DOB persistence ──
+
+    /**
+     * Parse MRZ YYMMDD date of birth and persist year/month/day components.
+     * MRZ uses 2-digit year: 00-99 mapped to 1920-2019 (anyone >100 is unlikely).
+     */
+    private suspend fun persistDob(mrzDob: String) {
+        val yy = mrzDob.substring(0, 2).toIntOrNull() ?: return
+        val mm = mrzDob.substring(2, 4).toIntOrNull() ?: return
+        val dd = mrzDob.substring(4, 6).toIntOrNull() ?: return
+        val year = if (yy <= 25) 2000 + yy else 1900 + yy
+        userPreferences.setBirthDate(year, mm, dd)
     }
 
     // ── Helpers ──

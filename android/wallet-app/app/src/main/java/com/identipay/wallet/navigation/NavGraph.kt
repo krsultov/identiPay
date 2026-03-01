@@ -29,6 +29,12 @@ import com.identipay.wallet.ui.send.SendScreen
 import com.identipay.wallet.ui.send.SendViewModel
 import com.identipay.wallet.ui.stealth.StealthAddressesScreen
 import com.identipay.wallet.ui.stealth.StealthAddressesViewModel
+import com.identipay.wallet.ui.history.TransactionDetailScreen
+import com.identipay.wallet.ui.history.TransactionDetailViewModel
+import com.identipay.wallet.ui.settings.SettingsScreen
+import com.identipay.wallet.ui.settings.SettingsViewModel
+import com.identipay.wallet.ui.artifacts.ArtifactsScreen
+import com.identipay.wallet.ui.artifacts.ArtifactsViewModel
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 
@@ -51,6 +57,8 @@ fun NavGraph(
                 onHistory = { navController.navigate(Route.History.route) },
                 onScan = { navController.navigate(Route.Scanner.route) },
                 onStealthAddresses = { navController.navigate(Route.StealthAddresses.route) },
+                onArtifacts = { navController.navigate(Route.Artifacts.route) },
+                onSettings = { navController.navigate(Route.Settings.route) },
             )
         }
 
@@ -84,6 +92,9 @@ fun NavGraph(
             HistoryScreen(
                 viewModel = viewModel,
                 onBack = { navController.popBackStack() },
+                onTransactionClick = { txDigest ->
+                    navController.navigate(Route.TransactionDetail.create(txDigest))
+                },
             )
         }
 
@@ -132,6 +143,33 @@ fun NavGraph(
                         popUpTo(Route.Home.route) { inclusive = true }
                     }
                 },
+            )
+        }
+
+        composable(
+            route = Route.TransactionDetail.route,
+            arguments = listOf(navArgument("txDigest") { type = NavType.StringType }),
+        ) {
+            val viewModel: TransactionDetailViewModel = hiltViewModel()
+            TransactionDetailScreen(
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(Route.Artifacts.route) {
+            val viewModel: ArtifactsViewModel = hiltViewModel()
+            ArtifactsScreen(
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(Route.Settings.route) {
+            val viewModel: SettingsViewModel = hiltViewModel()
+            SettingsScreen(
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() },
             )
         }
 

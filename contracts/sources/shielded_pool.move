@@ -5,12 +5,15 @@
 /// Per whitepaper section 4.8.
 ///
 /// Generic over token type T so it works with any coin (USDC, SUI, etc.).
+///
+/// Merkle tree uses Poseidon BN254 hashing (native sui::poseidon module)
+/// for compatibility with circomlib ZK circuits.
 module identipay::shielded_pool;
 
 use sui::balance::{Self, Balance};
 use sui::coin::{Self, Coin};
 use sui::event;
-use sui::hash;
+use sui::poseidon;
 use sui::table::{Self, Table};
 use identipay::zk_verifier::{Self, VerificationKey};
 
@@ -26,33 +29,33 @@ public struct ShieldedPool<phantom T> has key {
     id: UID,
     /// Pool balance
     balance: Balance<T>,
-    /// Current Merkle root of the note commitment tree
-    merkle_root: vector<u8>,
+    /// Current Merkle root of the note commitment tree (BN254 field element)
+    merkle_root: u256,
     /// Spent nullifiers (prevents double-spend)
-    nullifiers: Table<vector<u8>, bool>,
+    nullifiers: Table<u256, bool>,
     /// Next leaf index in the Merkle tree
     next_leaf_index: u64,
-    /// Filled subtrees: one hash per level (index 0 = leaf level).
+    /// Filled subtrees: one Poseidon hash per level (index 0 = leaf level).
     /// When a subtree at level i is completed, its root is stored here
     /// and used as the left child when computing the next level up.
-    filled_subtrees: vector<vector<u8>>,
+    filled_subtrees: vector<u256>,
     /// Merkle tree depth (determines max capacity: 2^depth notes)
     tree_depth: u8,
 }
 
 /// Emitted when a deposit is made.
 public struct DepositEvent has copy, drop {
-    note_commitment: vector<u8>,
+    note_commitment: u256,
     leaf_index: u64,
-    new_merkle_root: vector<u8>,
+    new_merkle_root: u256,
 }
 
 /// Emitted when a withdrawal is made.
 public struct WithdrawEvent has copy, drop {
-    nullifier: vector<u8>,
+    nullifier: u256,
     recipient: address,
     amount: u64,
-    new_merkle_root: vector<u8>,
+    new_merkle_root: u256,
 }
 
 // ============ Constants ============
@@ -60,10 +63,10 @@ public struct WithdrawEvent has copy, drop {
 const ENullifierAlreadySpent: u64 = 0;
 const EProofVerificationFailed: u64 = 1;
 const EInsufficientPoolBalance: u64 = 2;
-const EEmptyCommitment: u64 = 3;
+const EZeroCommitment: u64 = 3;
 const EPoolFull: u64 = 4;
 const EInvalidAmount: u64 = 5;
-const EEmptyNullifier: u64 = 6;
+const EZeroNullifier: u64 = 6;
 
 const DEFAULT_TREE_DEPTH: u8 = 20; // 2^20 = ~1M notes
 
@@ -73,7 +76,7 @@ const DEFAULT_TREE_DEPTH: u8 = 20; // 2^20 = ~1M notes
 /// The pool starts with an empty Merkle tree.
 entry fun create_pool<T>(ctx: &mut TxContext) {
     // Initialize filled_subtrees with zero hashes at each level.
-    // zero_hash(0) = ZERO_LEAF, zero_hash(i) = hash(zero_hash(i-1) || zero_hash(i-1))
+    // zero_hash(0) = ZERO_LEAF = 0, zero_hash(i) = Poseidon(zero_hash(i-1), zero_hash(i-1))
     let mut filled = vector[];
     let mut current_zero = zero_leaf();
     let mut i = 0;
@@ -110,10 +113,10 @@ public fun create_pool_for_testing<T>(ctx: &mut TxContext) {
 entry fun deposit<T>(
     pool: &mut ShieldedPool<T>,
     coin: Coin<T>,
-    note_commitment: vector<u8>,
+    note_commitment: u256,
     _ctx: &mut TxContext,
 ) {
-    assert!(!note_commitment.is_empty(), EEmptyCommitment);
+    assert!(note_commitment != 0, EZeroCommitment);
     let capacity = 1u64 << pool.tree_depth;
     assert!(pool.next_leaf_index < capacity, EPoolFull);
     assert!(coin.value() > 0, EInvalidAmount);
@@ -149,14 +152,14 @@ entry fun withdraw<T>(
     vk: &VerificationKey,
     proof: vector<u8>,
     public_inputs: vector<u8>,
-    nullifier: vector<u8>,
+    nullifier: u256,
     recipient: address,
     amount: u64,
-    change_commitment: vector<u8>,
+    change_commitment: u256,
     ctx: &mut TxContext,
 ) {
     assert!(amount > 0, EInvalidAmount);
-    assert!(!nullifier.is_empty(), EEmptyNullifier);
+    assert!(nullifier != 0, EZeroNullifier);
     assert!(pool.balance.value() >= amount, EInsufficientPoolBalance);
 
     // Check nullifier hasn't been spent
@@ -170,7 +173,7 @@ entry fun withdraw<T>(
     pool.nullifiers.add(nullifier, true);
 
     // If there's change, insert the change commitment into the Merkle tree
-    if (!change_commitment.is_empty()) {
+    if (change_commitment != 0) {
         let new_root = insert_leaf(pool, change_commitment);
         pool.merkle_root = new_root;
         pool.next_leaf_index = pool.next_leaf_index + 1;
@@ -192,31 +195,25 @@ entry fun withdraw<T>(
 // ============ Read Functions ============
 
 public fun pool_balance<T>(pool: &ShieldedPool<T>): u64 { pool.balance.value() }
-public fun merkle_root<T>(pool: &ShieldedPool<T>): vector<u8> { pool.merkle_root }
+public fun merkle_root<T>(pool: &ShieldedPool<T>): u256 { pool.merkle_root }
 public fun next_leaf_index<T>(pool: &ShieldedPool<T>): u64 { pool.next_leaf_index }
-public fun is_nullifier_spent<T>(pool: &ShieldedPool<T>, nullifier: vector<u8>): bool {
+public fun is_nullifier_spent<T>(pool: &ShieldedPool<T>, nullifier: u256): bool {
     pool.nullifiers.contains(nullifier)
 }
 
-// ============ Internal: Incremental Merkle Tree ============
+// ============ Internal: Incremental Merkle Tree (Poseidon BN254) ============
 
-/// The zero leaf value (32 zero bytes). Represents an empty leaf slot.
-fun zero_leaf(): vector<u8> {
-    vector[
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    ]
+/// The zero leaf value. Represents an empty leaf slot.
+/// Field element 0 in the BN254 scalar field.
+fun zero_leaf(): u256 {
+    0u256
 }
 
-/// Hash two 32-byte nodes together: BLAKE2b-256(left || right).
-fun hash_pair(left: vector<u8>, right: vector<u8>): vector<u8> {
-    let mut preimage = left;
-    let mut i = 0;
-    while (i < right.length()) {
-        preimage.push_back(*right.borrow(i));
-        i = i + 1;
-    };
-    hash::blake2b256(&preimage)
+/// Hash two BN254 field elements together using Poseidon.
+/// This matches the circomlib Poseidon hash for 2 inputs.
+fun hash_pair(left: u256, right: u256): u256 {
+    let data = vector[left, right];
+    poseidon::poseidon_bn254(&data)
 }
 
 /// Insert a leaf into the incremental Merkle tree and return the new root.
@@ -226,7 +223,7 @@ fun hash_pair(left: vector<u8>, right: vector<u8>): vector<u8> {
 /// at that level; if odd (right child), the sibling is the stored filled
 /// subtree at that level. When the current index is even, we update the
 /// filled_subtrees entry for that level because we just completed a left subtree.
-fun insert_leaf<T>(pool: &mut ShieldedPool<T>, leaf: vector<u8>): vector<u8> {
+fun insert_leaf<T>(pool: &mut ShieldedPool<T>, leaf: u256): u256 {
     let mut current_index = pool.next_leaf_index;
     let mut current_hash = leaf;
     let depth = pool.tree_depth as u64;

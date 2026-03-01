@@ -118,6 +118,11 @@ function StorePage() {
                   <span className="absolute top-4 left-4 rounded-full bg-white/80 px-3 py-1 text-[11px] font-medium text-[#86868b] backdrop-blur-sm">
                     {product.category}
                   </span>
+                  {product.ageGate && (
+                    <span className="absolute top-4 right-4 rounded-full bg-amber-500/90 px-2.5 py-1 text-[11px] font-bold text-white backdrop-blur-sm">
+                      {product.ageGate}+ ZK
+                    </span>
+                  )}
                 </div>
 
                 <div className="p-5">

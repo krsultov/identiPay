@@ -68,6 +68,32 @@ export function transactionRoutes(deps: { db: Db; suiService: SuiService }) {
         zkProof: params.zkProof as number[] | undefined,
         zkPublicInputs: params.zkPublicInputs as number[] | undefined,
       });
+    } else if (body.type === "pool_deposit") {
+      const params = body as Record<string, unknown>;
+      if (!params.amount || !params.coinType || !params.ephemeralPubkey) {
+        throw new ValidationError("Missing required pool_deposit parameters");
+      }
+      txBytes = await deps.suiService.buildSponsoredPoolDeposit({
+        senderAddress: params.senderAddress as string,
+        coinType: params.coinType as string,
+        amount: String(params.amount),
+        noteCommitment: params.ephemeralPubkey as number[],
+      });
+    } else if (body.type === "pool_withdraw") {
+      const params = body as Record<string, unknown>;
+      if (!params.amount || !params.recipient || !params.coinType || !params.zkProof || !params.zkPublicInputs) {
+        throw new ValidationError("Missing required pool_withdraw parameters");
+      }
+      txBytes = await deps.suiService.buildSponsoredPoolWithdraw({
+        senderAddress: params.senderAddress as string,
+        coinType: params.coinType as string,
+        amount: String(params.amount),
+        recipient: params.recipient as string,
+        nullifier: params.nullifier as number[],
+        changeCommitment: params.changeCommitment as number[],
+        zkProof: params.zkProof as number[],
+        zkPublicInputs: params.zkPublicInputs as number[],
+      });
     } else {
       throw new ValidationError(`Unknown transaction type: ${body.type}`);
     }
@@ -90,6 +116,21 @@ export function transactionRoutes(deps: { db: Db; suiService: SuiService }) {
       body.txBytes,
       body.senderSignature,
     );
+
+    return c.json({ txDigest });
+  });
+
+  // POST /submit-pool — backend signs as both sender and gas owner (pool withdrawals)
+  app.post("/submit-pool", async (c) => {
+    const body = await c.req.json<{
+      txBytes?: string;
+    }>();
+
+    if (!body.txBytes) {
+      throw new ValidationError("txBytes is required");
+    }
+
+    const txDigest = await deps.suiService.submitAdminOnlyTx(body.txBytes);
 
     return c.json({ txDigest });
   });

@@ -13,6 +13,9 @@ export interface SuiServiceConfig {
   settlementStateId: string;
   adminSecretKey: string;
   verificationKeyId: string;
+  ageCheckVkId: string;
+  poolSpendVkId: string;
+  shieldedPoolId: string;
 }
 
 export interface MerchantOnChainParams {
@@ -220,24 +223,45 @@ export class SuiService {
   }
 
   /**
-   * Find the first USDC coin owned by an address with sufficient balance.
+   * Find a coin with sufficient balance, merging multiple coins in the PTB
+   * if no single coin is large enough but the aggregate total suffices.
    */
-  private async findCoin(
+  private async prepareCoin(
+    tx: Transaction,
     owner: string,
     coinType: string,
     minBalance?: string,
   ): Promise<string> {
-    const coins = await this.client.getCoins({ owner, coinType, limit: 10 });
+    const coins = await this.client.getCoins({ owner, coinType, limit: 50 });
     if (!coins.data || coins.data.length === 0) {
       throw new SuiError(`No ${coinType} coins found at ${owner}`);
     }
     if (minBalance) {
       const needed = BigInt(minBalance);
-      const coin = coins.data.find((c) => BigInt(c.balance) >= needed);
-      if (!coin) {
+
+      // Fast path: a single coin already covers the amount
+      const singleCoin = coins.data.find((c) => BigInt(c.balance) >= needed);
+      if (singleCoin) {
+        return singleCoin.coinObjectId;
+      }
+
+      // Slow path: check aggregate and merge within the PTB
+      const totalBalance = coins.data.reduce(
+        (sum, c) => sum + BigInt(c.balance),
+        0n,
+      );
+      if (totalBalance < needed) {
         throw new SuiError(`Insufficient ${coinType} balance at ${owner}`);
       }
-      return coin.coinObjectId;
+
+      const primaryCoinId = coins.data[0].coinObjectId;
+      if (coins.data.length > 1) {
+        tx.mergeCoins(
+          tx.object(primaryCoinId),
+          coins.data.slice(1).map((c) => tx.object(c.coinObjectId)),
+        );
+      }
+      return primaryCoinId;
     }
     return coins.data[0].coinObjectId;
   }
@@ -257,13 +281,13 @@ export class SuiService {
     viewTag: number;
   }): Promise<string> {
     try {
-      // Find the sender's USDC coin if not provided
-      const coinId = params.coinId ??
-        await this.findCoin(params.senderAddress, params.coinType, params.amount);
-
       const tx = new Transaction();
       tx.setSender(params.senderAddress);
       tx.setGasOwner(this.adminKeypair.getPublicKey().toSuiAddress());
+
+      // Find the sender's USDC coin if not provided (may merge multiple coins)
+      const coinId = params.coinId ??
+        await this.prepareCoin(tx, params.senderAddress, params.coinType, params.amount);
 
       // Split exact amount from the source coin
       const [splitCoin] = tx.splitCoins(tx.object(coinId), [
@@ -326,13 +350,13 @@ export class SuiService {
     zkPublicInputs?: number[];
   }): Promise<string> {
     try {
-      // Find the sender's coin if not provided
-      const coinId = params.coinId ??
-        await this.findCoin(params.senderAddress, params.coinType, params.amount);
-
       const tx = new Transaction();
       tx.setSender(params.senderAddress);
       tx.setGasOwner(this.adminKeypair.getPublicKey().toSuiAddress());
+
+      // Find the sender's coin if not provided (may merge multiple coins)
+      const coinId = params.coinId ??
+        await this.prepareCoin(tx, params.senderAddress, params.coinType, params.amount);
 
       const isAgeGated = params.zkProof != null && params.zkPublicInputs != null;
       const target = isAgeGated
@@ -355,7 +379,7 @@ export class SuiService {
       // ZK arguments (only for age-gated execute_commerce)
       if (isAgeGated) {
         args.push(
-          tx.object(this.config.verificationKeyId),    // zk_vk: &VerificationKey
+          tx.object(this.config.ageCheckVkId),            // zk_vk: &VerificationKey (age check)
           tx.pure.vector('u8', params.zkProof!),       // zk_proof: vector<u8>
           tx.pure.vector('u8', params.zkPublicInputs!),// zk_public_inputs: vector<u8>
         );
@@ -400,6 +424,114 @@ export class SuiService {
   }
 
   /**
+   * Build a gas-sponsored pool deposit transaction.
+   * Splits the deposit amount from the sender's coin, then calls
+   * shielded_pool::deposit with the note commitment.
+   */
+  async buildSponsoredPoolDeposit(params: {
+    senderAddress: string;
+    coinType: string;
+    amount: string;
+    noteCommitment: number[];
+  }): Promise<string> {
+    try {
+      const tx = new Transaction();
+      tx.setSender(params.senderAddress);
+      tx.setGasOwner(this.adminKeypair.getPublicKey().toSuiAddress());
+
+      // Find coin (may merge multiple coins in the PTB)
+      const coinId = await this.prepareCoin(
+        tx,
+        params.senderAddress,
+        params.coinType,
+        params.amount,
+      );
+
+      // Split exact amount from the source coin
+      const [depositCoin] = tx.splitCoins(tx.object(coinId), [
+        tx.pure.u64(params.amount),
+      ]);
+
+      // Convert note commitment bytes to u256 — the bytes are big-endian
+      // Pad to 32 bytes then encode as BCS u256
+      const commitBytes = new Uint8Array(32);
+      const src = new Uint8Array(params.noteCommitment);
+      commitBytes.set(src.slice(0, Math.min(src.length, 32)), 32 - Math.min(src.length, 32));
+
+      tx.moveCall({
+        target: `${this.config.packageId}::shielded_pool::deposit`,
+        typeArguments: [params.coinType],
+        arguments: [
+          tx.object(this.config.shieldedPoolId),
+          depositCoin,
+          tx.pure.u256(BigInt("0x" + bytesToHex(commitBytes))),
+        ],
+      });
+
+      const builtBytes = await tx.build({ client: this.client });
+      return toBase64(builtBytes);
+    } catch (error) {
+      if (error instanceof SuiError) throw error;
+      throw new SuiError("Failed to build sponsored pool deposit", {
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  /**
+   * Build a gas-sponsored pool withdraw transaction.
+   * Calls shielded_pool::withdraw with the ZK proof and nullifier.
+   */
+  async buildSponsoredPoolWithdraw(params: {
+    senderAddress: string;
+    coinType: string;
+    amount: string;
+    recipient: string;
+    nullifier: number[];
+    changeCommitment: number[];
+    zkProof: number[];
+    zkPublicInputs: number[];
+  }): Promise<string> {
+    try {
+      const tx = new Transaction();
+      tx.setSender(this.adminKeypair.getPublicKey().toSuiAddress());
+      tx.setGasOwner(this.adminKeypair.getPublicKey().toSuiAddress());
+
+      // Convert nullifier and change commitment bytes to u256
+      const nullBytes = new Uint8Array(32);
+      const nullSrc = new Uint8Array(params.nullifier);
+      nullBytes.set(nullSrc.slice(0, Math.min(nullSrc.length, 32)), 32 - Math.min(nullSrc.length, 32));
+
+      const changeBytes = new Uint8Array(32);
+      const changeSrc = new Uint8Array(params.changeCommitment);
+      changeBytes.set(changeSrc.slice(0, Math.min(changeSrc.length, 32)), 32 - Math.min(changeSrc.length, 32));
+
+      tx.moveCall({
+        target: `${this.config.packageId}::shielded_pool::withdraw`,
+        typeArguments: [params.coinType],
+        arguments: [
+          tx.object(this.config.shieldedPoolId),
+          tx.object(this.config.poolSpendVkId),
+          tx.pure.vector('u8', params.zkProof),
+          tx.pure.vector('u8', params.zkPublicInputs),
+          tx.pure.u256(BigInt("0x" + bytesToHex(nullBytes))),
+          tx.pure.address(params.recipient),
+          tx.pure.u64(params.amount),
+          tx.pure.u256(BigInt("0x" + bytesToHex(changeBytes))),
+        ],
+      });
+
+      const builtBytes = await tx.build({ client: this.client });
+      return toBase64(builtBytes);
+    } catch (error) {
+      if (error instanceof SuiError) throw error;
+      throw new SuiError("Failed to build sponsored pool withdraw", {
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  /**
    * Submit a sponsored transaction with both sender and gas owner signatures.
    * The wallet signs as sender; the backend signs as gas owner.
    * Both signatures are submitted together.
@@ -429,6 +561,34 @@ export class SuiService {
     } catch (error) {
       if (error instanceof SuiError) throw error;
       throw new SuiError("Failed to submit sponsored transaction", {
+        message: (error as Error).message,
+      });
+    }
+  }
+
+  /**
+   * Submit a transaction where admin is both sender and gas owner.
+   * Used for pool withdrawals where the recipient has no coins to sign with.
+   */
+  async submitAdminOnlyTx(txBytes: string): Promise<string> {
+    try {
+      const txData = fromBase64(txBytes);
+      const adminSignature = await this.adminKeypair.signTransaction(txData);
+
+      const result = await this.client.executeTransactionBlock({
+        transactionBlock: txBytes,
+        signature: [adminSignature.signature],
+        options: { showEffects: true },
+      });
+
+      if (result.effects?.status?.status !== "success") {
+        throw new SuiError("Admin-only transaction failed", result.effects?.status);
+      }
+
+      return result.digest;
+    } catch (error) {
+      if (error instanceof SuiError) throw error;
+      throw new SuiError("Failed to submit admin-only transaction", {
         message: (error as Error).message,
       });
     }

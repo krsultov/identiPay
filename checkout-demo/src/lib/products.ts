@@ -6,6 +6,7 @@ export interface Product {
   currency: string;
   image: string;
   category: string;
+  ageGate?: number;
 }
 
 export const PRODUCTS: Product[] = [
@@ -63,13 +64,23 @@ export const PRODUCTS: Product[] = [
     image: "/products/webcam.svg",
     category: "Peripherals",
   },
+  {
+    id: "vaporizer-pro",
+    name: "Premium Vaporizer Kit",
+    description: "Variable wattage, OLED display, ceramic coil, USB-C fast charge. Age verification required.",
+    price: 0.15,
+    currency: "USDC",
+    image: "/products/vaporizer.svg",
+    category: "18+",
+    ageGate: 18,
+  },
 ];
 
 export const MERCHANT = {
   name: "TechVault",
   address: "0x9f9a52525712f64c6225f076857cb5c32096c203a499760f43749ee360d4a5fa",
   hostname: "techvault.store",
-  did: "did:identipay:techvault.store:0f0f4e53-40c3-4bef-a568-6e37fb273a67",
-  publicKey: "34cf45bfc18bc8d6baf0c32421ab4af608a7358a2739668157cb9b51338d366a",
+  did: "did:identipay:techvault.store:ccd20e4a-ae80-49f3-862c-2f05c2714d1b",
+  publicKey: "a6317b7521f98e96e8ac16dab916af8fdc3f65be3e7305954f219f6ca64dcdb5",
   tagline: "Premium tech essentials",
 };

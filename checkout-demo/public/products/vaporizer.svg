@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <!-- Vaporizer body -->
+  <rect x="85" y="40" width="30" height="110" rx="8" fill="#2d2d2d" stroke="#1a1a1a" stroke-width="1.5"/>
+  <!-- Mouthpiece -->
+  <rect x="90" y="30" width="20" height="15" rx="4" fill="#444" stroke="#333" stroke-width="1"/>
+  <!-- Display/button area -->
+  <rect x="90" y="80" width="20" height="25" rx="3" fill="#0f0f0f"/>
+  <rect x="93" y="83" width="14" height="12" rx="2" fill="#1a3a2a"/>
+  <text x="100" y="93" text-anchor="middle" font-size="8" fill="#34d399" font-family="monospace">18W</text>
+  <!-- Button -->
+  <circle cx="100" cy="102" r="3" fill="#555" stroke="#666" stroke-width="0.5"/>
+  <!-- Airflow ring -->
+  <rect x="87" y="140" width="26" height="6" rx="3" fill="#3a3a3a" stroke="#2a2a2a" stroke-width="0.5"/>
+  <!-- Tank -->
+  <rect x="89" y="146" width="22" height="20" rx="4" fill="#e8e8e8" opacity="0.3" stroke="#ccc" stroke-width="0.5"/>
+  <!-- Vapor wisps -->
+  <path d="M95 28 Q92 18 95 8" stroke="#ccc" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+  <path d="M100 26 Q98 14 101 4" stroke="#ccc" stroke-width="1.5" stroke-linecap="round" opacity="0.3"/>
+  <path d="M105 28 Q108 18 105 8" stroke="#ccc" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+</svg>

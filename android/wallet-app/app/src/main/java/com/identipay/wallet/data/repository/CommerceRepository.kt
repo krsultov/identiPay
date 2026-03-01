@@ -20,6 +20,8 @@ import com.identipay.wallet.network.toHexString
 import javax.inject.Inject
 import javax.inject.Singleton
 
+
+
 sealed class CommerceResult {
     data class Success(val txDigest: String) : CommerceResult()
     data class Error(val message: String) : CommerceResult()
@@ -45,6 +47,7 @@ class CommerceRepository @Inject constructor(
     private val walletKeys: WalletKeys,
     private val stealthAddressDao: StealthAddressDao,
     private val transactionDao: TransactionDao,
+    private val poolRepository: dagger.Lazy<PoolRepository>,
 ) {
     companion object {
         private const val TAG = "CommerceRepository"
@@ -143,8 +146,77 @@ class CommerceRepository @Inject constructor(
             // 5. Find USDC source with sufficient balance
             val amountMicros = parseAmountMicros(proposal.amount.value)
             val sources = stealthAddressDao.getWithBalance()
-            val source = sources.firstOrNull { it.balanceUsdc >= amountMicros }
-                ?: return CommerceResult.Error("Insufficient USDC balance")
+            var source = sources.firstOrNull { it.balanceUsdc >= amountMicros }
+
+            // Pool-on-merge: deposit into shielded pool, then withdraw to a fresh address
+            if (source == null) {
+                val totalBalance = sources.sumOf { it.balanceUsdc }
+                if (totalBalance < amountMicros) {
+                    return CommerceResult.Error("Insufficient USDC balance")
+                }
+
+                Log.d(TAG, "Pool-on-merge: merging from ${sources.size} addresses via shielded pool")
+
+                // 1. Deposit all sources into the pool, tracking deposited note IDs
+                val depositedNoteIds = mutableListOf<Long>()
+                for (src in sources) {
+                    if (src.balanceUsdc <= 0) continue
+                    val privKey = Base64.decode(src.stealthPrivKeyEnc, Base64.NO_WRAP)
+                    val result = poolRepository.get().deposit(
+                        src.balanceUsdc, src.stealthAddress, privKey,
+                    )
+                    if (result is PoolResult.Error) {
+                        return CommerceResult.Error("Pool deposit failed: ${result.message}")
+                    }
+                    depositedNoteIds.add((result as PoolResult.Success).noteId)
+                    // Zero out the source balance since coins are now in the pool
+                    stealthAddressDao.updateBalance(src.stealthAddress, 0)
+                }
+
+                // 2. Derive a fresh stealth address for withdrawal
+                val mergeSpendPub = walletKeys.getSpendPublicKey()
+                val mergeViewPub = walletKeys.getViewPublicKey()
+                val mergeStealth = stealthAddress.derive(mergeSpendPub, mergeViewPub)
+                val mergeScan = stealthAddress.scan(
+                    viewPrivateKey = walletKeys.getViewKeyPair().privateKey,
+                    spendPrivateKey = walletKeys.getSpendKeyPair().privateKey,
+                    spendPubkey = mergeSpendPub,
+                    ephemeralPubkey = mergeStealth.ephemeralPubkey,
+                    announcedViewTag = mergeStealth.viewTag,
+                    announcedStealthAddress = mergeStealth.stealthAddress,
+                ) ?: return CommerceResult.Error("Failed to derive merge address")
+
+                val mergePrivKeyEnc = Base64.encodeToString(mergeScan.stealthPrivateKey, Base64.NO_WRAP)
+                stealthAddressDao.insert(
+                    StealthAddressEntity(
+                        stealthAddress = mergeScan.stealthAddress,
+                        stealthPrivKeyEnc = mergePrivKeyEnc,
+                        stealthPubkey = mergeScan.stealthPubkey.toHexString(),
+                        ephemeralPubkey = mergeStealth.ephemeralPubkey.toHexString(),
+                        viewTag = mergeStealth.viewTag,
+                        createdAt = System.currentTimeMillis(),
+                    )
+                )
+
+                // 3. Withdraw only the just-deposited notes to the fresh address
+                val depositedNotes = poolRepository.get().getNotesByIds(depositedNoteIds)
+                var withdrawnTotal = 0L
+                for (note in depositedNotes) {
+                    val result = poolRepository.get().withdraw(
+                        noteId = note.id,
+                        recipientAddress = mergeScan.stealthAddress,
+                        amount = note.amount,
+                    )
+                    if (result is PoolResult.Error) {
+                        return CommerceResult.Error("Pool withdraw failed: ${result.message}")
+                    }
+                    withdrawnTotal += note.amount
+                }
+
+                stealthAddressDao.updateBalance(mergeScan.stealthAddress, withdrawnTotal)
+                source = stealthAddressDao.getByAddress(mergeScan.stealthAddress)
+                    ?: return CommerceResult.Error("Pool merge completed but balance not available")
+            }
 
             val sourcePrivKey = Base64.decode(source.stealthPrivKeyEnc, Base64.NO_WRAP)
 
@@ -194,6 +266,8 @@ class CommerceRepository @Inject constructor(
                     amount = amountMicros,
                     counterpartyName = proposal.merchant.name,
                     stealthAddress = source.stealthAddress,
+                    buyerStealthAddress = scanResult.stealthAddress,
+                    merchantPublicKey = proposal.merchant.publicKey,
                 )
             )
 

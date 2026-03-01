@@ -27,6 +27,12 @@ export default function CheckoutPage({ onBack }: { onBack: () => void }) {
   const [proposal, setProposal] = useState<ProposalData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Determine if any cart item requires age gating
+  const maxAgeGate = items.reduce(
+    (max, i) => Math.max(max, i.product.ageGate ?? 0),
+    0,
+  );
+
   // Create proposal via backend
   const createProposal = useCallback(async () => {
     setStep("creating");
@@ -49,6 +55,11 @@ export default function CheckoutPage({ onBack }: { onBack: () => void }) {
           deliverables: {
             receipt: true,
           },
+          ...(maxAgeGate > 0 && {
+            constraints: {
+              ageGate: maxAgeGate,
+            },
+          }),
           expiresInSeconds: 900,
         }),
       });
@@ -245,6 +256,20 @@ export default function CheckoutPage({ onBack }: { onBack: () => void }) {
             </div>
           </div>
 
+          {maxAgeGate > 0 && (
+            <div className="flex-shrink-0 mt-3 rounded-xl border border-amber-400/30 bg-amber-50 p-4">
+              <div className="flex items-start gap-3">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 flex-shrink-0">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+                <div>
+                  <p className="text-xs font-semibold text-[#1d1d1f]">Age verification required ({maxAgeGate}+)</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-[#86868b]">Your wallet will generate a zero-knowledge proof of age. Your birthdate stays private — only the fact that you meet the threshold is revealed.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="hidden md:block flex-shrink-0 flex-1" />
           
           <div className="flex-shrink-0 mt-10 md:mt-6 flex items-center gap-2 text-[#86868b]">
@@ -372,6 +397,7 @@ export default function CheckoutPage({ onBack }: { onBack: () => void }) {
 
                 <div className="mt-10 mx-auto w-full max-w-xs space-y-4">
                   <ConfirmStep label="Intent verified" done />
+                  {maxAgeGate > 0 && <ConfirmStep label={`ZK age proof verified (${maxAgeGate}+)`} done />}
                   <ConfirmStep label="Stealth address derived" done />
                   <ConfirmStep label="Atomic settlement" active />
                   <ConfirmStep label="Minting payload receipt" />
@@ -403,6 +429,7 @@ export default function CheckoutPage({ onBack }: { onBack: () => void }) {
                     {proposal?.intentHash && <DetailRow label="Intent hash" value={proposal.intentHash.slice(0, 10) + "..." + proposal.intentHash.slice(-6)} mono />}
                     <DetailRow label="Tx hash" value={txHash.slice(0, 10) + "..." + txHash.slice(-6)} mono />
                     <DetailRow label="Settlement" value="Atomic" highlight />
+                    {maxAgeGate > 0 && <DetailRow label="Age verification" value={`${maxAgeGate}+ (ZK proof)`} highlight />}
                   </div>
                 </div>
 

@@ -94,6 +94,18 @@ class SeedManager @Inject constructor(
         return decrypt(encrypted, iv)
     }
 
+    /**
+     * Retrieve the stored mnemonic, or null if the wallet was derived
+     * from passport+PIN (no mnemonic stored).
+     */
+    fun getMnemonic(): String? {
+        val encMnemonic = sharedPreferences.getString(PREF_MNEMONIC, null) ?: return null
+        val iv = sharedPreferences.getString(PREF_MNEMONIC_IV, null) ?: return null
+        val encrypted = Base64.decode(encMnemonic, Base64.DEFAULT)
+        val ivBytes = Base64.decode(iv, Base64.DEFAULT)
+        return String(decrypt(encrypted, ivBytes), Charsets.UTF_8)
+    }
+
     fun deriveSpendKeyPair(): Ed25519KeyPair {
         val seed = getSeed()
         val derived = deriveSubkey(seed, "spend")

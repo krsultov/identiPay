@@ -36,6 +36,7 @@ import java.util.Locale
 fun HistoryScreen(
     viewModel: HistoryViewModel,
     onBack: () -> Unit,
+    onTransactionClick: (String) -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -75,7 +76,7 @@ fun HistoryScreen(
             ) {
                 item { Spacer(modifier = Modifier.height(8.dp)) }
                 items(uiState.transactions) { tx ->
-                    TransactionCard(tx)
+                    TransactionCard(tx, onClick = { onTransactionClick(tx.txDigest) })
                 }
                 item { Spacer(modifier = Modifier.height(8.dp)) }
             }
@@ -84,13 +85,14 @@ fun HistoryScreen(
 }
 
 @Composable
-private fun TransactionCard(tx: TransactionEntity) {
+private fun TransactionCard(tx: TransactionEntity, onClick: () -> Unit = {}) {
     val isSend = tx.type == "send" || tx.type == "commerce"
     val amountStr = formatAmount(tx.amount)
     val dateStr = SimpleDateFormat("MMM d, HH:mm", Locale.US).format(Date(tx.timestamp))
 
     Card(
         modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
     ) {
         Row(
             modifier = Modifier

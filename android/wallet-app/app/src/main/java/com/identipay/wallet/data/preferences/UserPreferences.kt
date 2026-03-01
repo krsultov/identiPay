@@ -22,6 +22,10 @@ class UserPreferences @Inject constructor(
         val HAS_SCANNED_PASSPORT = booleanPreferencesKey("has_scanned_passport")
         val USER_SALT = stringPreferencesKey("user_salt")
         val RECEIVE_COUNTER = intPreferencesKey("receive_counter")
+        val BIRTH_YEAR = intPreferencesKey("birth_year")
+        val BIRTH_MONTH = intPreferencesKey("birth_month")
+        val BIRTH_DAY = intPreferencesKey("birth_day")
+        val IDENTITY_COMMITMENT = stringPreferencesKey("identity_commitment")
     }
 
     val registeredName: Flow<String?> = dataStore.data.map { it[REGISTERED_NAME] }
@@ -58,4 +62,27 @@ class UserPreferences @Inject constructor(
     suspend fun setReceiveCounter(counter: Int) {
         dataStore.edit { it[RECEIVE_COUNTER] = counter }
     }
+
+    val birthYear: Flow<Int?> = dataStore.data.map { it[BIRTH_YEAR] }
+    val birthMonth: Flow<Int?> = dataStore.data.map { it[BIRTH_MONTH] }
+    val birthDay: Flow<Int?> = dataStore.data.map { it[BIRTH_DAY] }
+    val identityCommitment: Flow<String?> = dataStore.data.map { it[IDENTITY_COMMITMENT] }
+
+    suspend fun setBirthDate(year: Int, month: Int, day: Int) {
+        dataStore.edit {
+            it[BIRTH_YEAR] = year
+            it[BIRTH_MONTH] = month
+            it[BIRTH_DAY] = day
+        }
+    }
+
+    suspend fun setIdentityCommitment(commitment: String) {
+        dataStore.edit { it[IDENTITY_COMMITMENT] = commitment }
+    }
+
+    suspend fun getBirthYearOnce(): Int? = dataStore.data.map { it[BIRTH_YEAR] }.first()
+    suspend fun getBirthMonthOnce(): Int? = dataStore.data.map { it[BIRTH_MONTH] }.first()
+    suspend fun getBirthDayOnce(): Int? = dataStore.data.map { it[BIRTH_DAY] }.first()
+    suspend fun getIdentityCommitmentOnce(): String? = dataStore.data.map { it[IDENTITY_COMMITMENT] }.first()
+    suspend fun getUserSaltOnce(): String? = dataStore.data.map { it[USER_SALT] }.first()
 }
