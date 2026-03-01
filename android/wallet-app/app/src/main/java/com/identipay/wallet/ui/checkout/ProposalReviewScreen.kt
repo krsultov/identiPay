@@ -10,26 +10,32 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -48,7 +54,6 @@ fun ProposalReviewScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    // Navigate to confirm on success
     if (uiState.step == CheckoutStep.SUCCESS && uiState.proposal != null && uiState.txDigest != null) {
         onConfirm(uiState.proposal!!.transactionId, uiState.txDigest!!)
         return
@@ -60,9 +65,12 @@ fun ProposalReviewScreen(
                 title = { Text("Review Payment") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Text("<")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                ),
             )
         },
     ) { padding ->
@@ -75,7 +83,7 @@ fun ProposalReviewScreen(
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    CircularProgressIndicator()
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.height(16.dp))
                     Text("Loading proposal...")
                 }
@@ -124,7 +132,10 @@ fun ProposalReviewScreen(
                         color = MaterialTheme.colorScheme.error,
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    OutlinedButton(onClick = onBack) {
+                    OutlinedButton(
+                        onClick = onBack,
+                        shape = RoundedCornerShape(24.dp),
+                    ) {
                         Text("Go Back")
                     }
                 }
@@ -148,9 +159,10 @@ private fun ProposalContent(
             .verticalScroll(rememberScrollState())
             .padding(24.dp),
     ) {
-        // Merchant info
+        // Merchant info card
         Card(
             modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant,
             ),
@@ -164,6 +176,7 @@ private fun ProposalContent(
                 Text(
                     text = proposal.merchant.name,
                     style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
                 )
                 Text(
                     text = proposal.merchant.did,
@@ -179,6 +192,7 @@ private fun ProposalContent(
         Text(
             text = "Items",
             style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
         )
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -186,7 +200,7 @@ private fun ProposalContent(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp),
+                    .padding(vertical = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
@@ -196,11 +210,15 @@ private fun ProposalContent(
                 Text(
                     text = "${item.unitPrice} ${item.currency ?: proposal.amount.currency}",
                     style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
                 )
             }
         }
 
-        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+        HorizontalDivider(
+            modifier = Modifier.padding(vertical = 8.dp),
+            color = MaterialTheme.colorScheme.outlineVariant,
+        )
 
         // Total
         Row(
@@ -216,6 +234,7 @@ private fun ProposalContent(
                 text = "${proposal.amount.value} ${proposal.amount.currency}",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
             )
         }
 
@@ -223,7 +242,13 @@ private fun ProposalContent(
 
         // Deliverables
         if (proposal.deliverables.receipt || proposal.deliverables.warranty != null) {
-            Card(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                ),
+            ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
                         text = "Deliverables",
@@ -249,6 +274,7 @@ private fun ProposalContent(
             Spacer(modifier = Modifier.height(8.dp))
             Card(
                 modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                 ),
@@ -257,6 +283,7 @@ private fun ProposalContent(
                     text = "Age verification required: ${age}+",
                     modifier = Modifier.padding(16.dp),
                     color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    fontWeight = FontWeight.Medium,
                 )
             }
         }
@@ -267,6 +294,7 @@ private fun ProposalContent(
         error?.let {
             Card(
                 modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.errorContainer,
                 ),
@@ -276,6 +304,7 @@ private fun ProposalContent(
                         text = "Payment failed",
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onErrorContainer,
+                        fontWeight = FontWeight.SemiBold,
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
@@ -294,7 +323,7 @@ private fun ProposalContent(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                CircularProgressIndicator()
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = when (step) {
@@ -305,6 +334,7 @@ private fun ProposalContent(
                         else -> ""
                     },
                     style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -318,18 +348,27 @@ private fun ProposalContent(
         ) {
             OutlinedButton(
                 onClick = onBack,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).height(48.dp),
                 enabled = step == CheckoutStep.IDLE || step == CheckoutStep.ERROR,
+                shape = RoundedCornerShape(24.dp),
             ) {
                 Text("Cancel")
             }
             Spacer(modifier = Modifier.width(16.dp))
             Button(
                 onClick = onPay,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).height(48.dp),
                 enabled = step == CheckoutStep.IDLE,
+                shape = RoundedCornerShape(24.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                ),
             ) {
-                Text("Pay ${proposal.amount.value} ${proposal.amount.currency}")
+                Text(
+                    "Pay ${proposal.amount.value} ${proposal.amount.currency}",
+                    fontWeight = FontWeight.SemiBold,
+                )
             }
         }
     }
@@ -350,6 +389,7 @@ private fun AgeVerificationFailedContent(
     ) {
         Card(
             modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.errorContainer,
             ),
@@ -362,6 +402,7 @@ private fun AgeVerificationFailedContent(
                     text = "Age Verification Failed",
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onErrorContainer,
+                    fontWeight = FontWeight.Bold,
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
@@ -385,7 +426,8 @@ private fun AgeVerificationFailedContent(
 
         OutlinedButton(
             onClick = onBack,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            shape = RoundedCornerShape(24.dp),
         ) {
             Text("Go Back")
         }

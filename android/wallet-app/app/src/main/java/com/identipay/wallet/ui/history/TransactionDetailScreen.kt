@@ -1,6 +1,8 @@
 package com.identipay.wallet.ui.history
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -23,12 +26,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -56,6 +64,9 @@ fun TransactionDetailScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                ),
             )
         },
     ) { padding ->
@@ -67,7 +78,7 @@ fun TransactionDetailScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                CircularProgressIndicator()
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
             }
         } else if (uiState.transaction == null) {
             Column(
@@ -95,34 +106,49 @@ fun TransactionDetailScreen(
             ) {
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Amount + type header
-                Text(
-                    text = "${if (isSend) "-" else "+"}$amountStr USDC",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = if (isSend) MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.primary,
-                )
+                // Hero amount card
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isSend) MaterialTheme.colorScheme.errorContainer
+                        else MaterialTheme.colorScheme.tertiaryContainer,
+                    ),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            text = "${if (isSend) "-" else "+"}$amountStr USDC",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isSend) MaterialTheme.colorScheme.onErrorContainer
+                            else MaterialTheme.colorScheme.onTertiaryContainer,
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = when (tx.type) {
+                                "send" -> "Sent"
+                                "receive" -> "Received"
+                                "commerce" -> "Purchase"
+                                else -> tx.type.replaceFirstChar { it.uppercase() }
+                            },
+                            style = MaterialTheme.typography.titleMedium,
+                            color = if (isSend) MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f)
+                            else MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
+                        )
+                    }
+                }
 
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Text(
-                    text = when (tx.type) {
-                        "send" -> "Sent"
-                        "receive" -> "Received"
-                        "commerce" -> "Purchase"
-                        else -> tx.type.replaceFirstChar { it.uppercase() }
-                    },
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-                HorizontalDivider()
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Details card
                 Card(
                     modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant,
                     ),
@@ -178,7 +204,7 @@ private fun DetailRow(label: String, value: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
@@ -189,6 +215,7 @@ private fun DetailRow(label: String, value: String) {
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
         )
     }
 }
@@ -201,11 +228,18 @@ private fun ReceiptCard(receiptJson: String) {
         null
     }
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 text = "Receipt",
                 style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
             )
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -214,20 +248,19 @@ private fun ReceiptCard(receiptJson: String) {
                     DetailRow("Merchant", it)
                 }
 
-                // Line items
                 json["items"]?.jsonArray?.let { items ->
                     Spacer(modifier = Modifier.height(8.dp))
-                    HorizontalDivider()
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Spacer(modifier = Modifier.height(8.dp))
                     items.forEach { item ->
                         val obj = item.jsonObject
                         val name = obj["name"]?.jsonPrimitive?.content ?: "Item"
                         val qty = obj["quantity"]?.jsonPrimitive?.content ?: "1"
-                        val price = obj["unitPrice"]?.jsonPrimitive?.content ?: "—"
+                        val price = obj["unitPrice"]?.jsonPrimitive?.content ?: "\u2014"
                         DetailRow("$name x$qty", "$price USDC")
                     }
                     Spacer(modifier = Modifier.height(4.dp))
-                    HorizontalDivider()
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Spacer(modifier = Modifier.height(4.dp))
                 }
 
@@ -256,11 +289,18 @@ private fun WarrantyCard(warrantyJson: String) {
         null
     }
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 text = "Warranty",
                 style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
             )
             Spacer(modifier = Modifier.height(8.dp))
 

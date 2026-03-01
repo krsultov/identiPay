@@ -170,14 +170,28 @@ class AnnouncementRepository @Inject constructor(
                     }
 
                     if (txInfo != null && txInfo.amount > 0L) {
+                        // For commerce transactions, look up merchant public key
+                        var merchantPubKey: String? = null
+                        var merchantName: String? = txInfo.merchantName
+                        if (txInfo.type == "commerce" && txInfo.merchantAddress != null) {
+                            try {
+                                val lookup = backendApi.lookupMerchantByAddress(txInfo.merchantAddress)
+                                merchantPubKey = lookup?.publicKey
+                                if (lookup?.name != null) merchantName = lookup.name
+                            } catch (e: Exception) {
+                                Log.e(TAG, "scanNew: merchant lookup failed for ${txInfo.merchantAddress}", e)
+                            }
+                        }
                         transactionDao.insert(
                             TransactionEntity(
                                 txDigest = txInfo.txDigest,
                                 type = txInfo.type,
                                 amount = txInfo.amount,
-                                counterpartyName = txInfo.merchantName,
+                                counterpartyName = merchantName,
                                 stealthAddress = announcement.stealthAddress,
                                 timestamp = txInfo.timestamp,
+                                buyerStealthAddress = txInfo.buyerStealthAddress,
+                                merchantPublicKey = merchantPubKey,
                             )
                         )
                         Log.d(TAG, "scanNew: recovered ${txInfo.type} tx ${txInfo.txDigest} amount=${txInfo.amount}")
@@ -230,14 +244,25 @@ class AnnouncementRepository @Inject constructor(
                 }
 
                 if (txInfo != null && txInfo.amount > 0L) {
+                    // Look up merchant public key for artifact decryption
+                    val merchantLookup = txInfo.merchantAddress?.let { merchantAddr ->
+                        try {
+                            backendApi.lookupMerchantByAddress(merchantAddr)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "recoverCommerceArtifacts: merchant lookup failed for $merchantAddr", e)
+                            null
+                        }
+                    }
                     transactionDao.insert(
                         TransactionEntity(
                             txDigest = txInfo.txDigest,
                             type = txInfo.type,
                             amount = txInfo.amount,
-                            counterpartyName = txInfo.merchantName,
+                            counterpartyName = merchantLookup?.name ?: txInfo.merchantName,
                             stealthAddress = addr.stealthAddress,
                             timestamp = txInfo.timestamp,
+                            buyerStealthAddress = txInfo.buyerStealthAddress,
+                            merchantPublicKey = merchantLookup?.publicKey,
                         )
                     )
                     recovered++

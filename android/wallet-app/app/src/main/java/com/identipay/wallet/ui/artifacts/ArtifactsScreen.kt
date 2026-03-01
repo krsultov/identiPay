@@ -8,10 +8,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -23,11 +27,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.serialization.json.jsonArray
@@ -54,6 +61,9 @@ fun ArtifactsScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                ),
             )
         },
     ) { padding ->
@@ -66,7 +76,7 @@ fun ArtifactsScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    CircularProgressIndicator()
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                 }
             }
             uiState.artifacts.isEmpty() -> {
@@ -113,15 +123,28 @@ private fun ReceiptCard(receipt: ArtifactItem.Receipt) {
 
     Card(
         modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,
         ),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = "Receipt",
-                style = MaterialTheme.typography.titleMedium,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    Icons.Filled.Receipt,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = "Receipt",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
             Spacer(modifier = Modifier.height(8.dp))
 
             json["merchant"]?.jsonPrimitive?.content?.let {
@@ -129,10 +152,9 @@ private fun ReceiptCard(receipt: ArtifactItem.Receipt) {
             }
             DetailRow("Date", dateStr)
 
-            // Line items
             json["items"]?.jsonArray?.let { items ->
                 Spacer(modifier = Modifier.height(8.dp))
-                HorizontalDivider()
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Spacer(modifier = Modifier.height(8.dp))
                 items.forEach { item ->
                     val obj = item.jsonObject
@@ -142,7 +164,7 @@ private fun ReceiptCard(receipt: ArtifactItem.Receipt) {
                     DetailRow("$name x$qty", "$price USDC")
                 }
                 Spacer(modifier = Modifier.height(4.dp))
-                HorizontalDivider()
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Spacer(modifier = Modifier.height(4.dp))
             }
 
@@ -166,15 +188,28 @@ private fun WarrantyCard(warranty: ArtifactItem.Warranty) {
 
     Card(
         modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,
         ),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = "Warranty",
-                style = MaterialTheme.typography.titleMedium,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    Icons.Filled.Shield,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.tertiary,
+                )
+                Text(
+                    text = "Warranty",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
             Spacer(modifier = Modifier.height(8.dp))
 
             json["merchant"]?.jsonPrimitive?.content?.let {
@@ -189,7 +224,6 @@ private fun WarrantyCard(warranty: ArtifactItem.Warranty) {
                 DetailRow("Transferable", if (it == "true") "Yes" else "No")
             }
 
-            // Compute expiry from timestamp + durationDays
             json["durationDays"]?.jsonPrimitive?.content?.toLongOrNull()?.let { days ->
                 val expiryMs = warranty.timestamp + days * 86_400_000L
                 val expiryStr = SimpleDateFormat("MMM d, yyyy", Locale.US).format(Date(expiryMs))
@@ -220,6 +254,7 @@ private fun DetailRow(label: String, value: String) {
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
         )
     }
 }

@@ -12,6 +12,7 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -55,46 +57,28 @@ import java.util.concurrent.Executors
 
 private const val TAG = "MrzScan"
 
-/**
- * Parses TD3 (passport) MRZ from recognized text lines.
- * Returns triple of (docNumber, dateOfBirth, expiryDate) in YYMMDD format, or null.
- */
 private fun parseMrzFromText(text: String): Triple<String, String, String>? {
-    // Normalize: replace common OCR mistakes in MRZ context
     val lines = text.lines()
         .map { it.trim().uppercase().replace(" ", "") }
         .filter { it.length >= 30 }
 
-    // Look for TD3 MRZ line 2 pattern:
-    // 44 chars, contains '<', has digits in date positions
     for (line in lines) {
-        // TD3 line 2 is 44 chars, but OCR may be slightly off
         if (line.length < 42 || line.length > 46) continue
-        // Line 2 typically starts with alphanumeric (doc number) and contains '<'
         if (!line.contains('<') && !line.contains('«')) continue
 
         val normalized = line.replace('«', '<').replace('O', '0')
 
-        // Try to extract from standard positions
-        // Doc number: positions 0-8 (9 chars), check digit at 9
-        // Nationality: 10-12
-        // DOB: 13-18 (YYMMDD), check digit at 19
-        // Sex: 20
-        // Expiry: 21-26 (YYMMDD), check digit at 27
         if (normalized.length >= 28) {
             val docNumberRaw = normalized.substring(0, 9).trimEnd('<')
             val dobRaw = normalized.substring(13, 19)
             val expiryRaw = normalized.substring(21, 27)
 
-            // Validate: doc number should be alphanumeric
             if (!docNumberRaw.all { it.isLetterOrDigit() }) continue
             if (docNumberRaw.isEmpty()) continue
 
-            // Validate dates are 6 digits
             if (!dobRaw.all { it.isDigit() } || dobRaw.length != 6) continue
             if (!expiryRaw.all { it.isDigit() } || expiryRaw.length != 6) continue
 
-            // Basic date range check
             val dobMonth = dobRaw.substring(2, 4).toIntOrNull() ?: continue
             val dobDay = dobRaw.substring(4, 6).toIntOrNull() ?: continue
             val expMonth = expiryRaw.substring(2, 4).toIntOrNull() ?: continue
@@ -176,6 +160,19 @@ fun MrzScanScreen(
                     },
                 )
 
+                // Viewfinder overlay
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .fillMaxWidth(0.85f)
+                        .height(120.dp)
+                        .border(
+                            width = 2.dp,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                            shape = RoundedCornerShape(16.dp),
+                        ),
+                )
+
                 // Overlay instructions
                 Column(
                     modifier = Modifier
@@ -187,8 +184,8 @@ fun MrzScanScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color.Black.copy(alpha = 0.7f))
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color.Black.copy(alpha = 0.75f))
                             .padding(16.dp),
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -212,7 +209,7 @@ fun MrzScanScreen(
                                 Text(
                                     text = "Detected: $scanResult",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color.Green,
+                                    color = MaterialTheme.colorScheme.primary,
                                     textAlign = TextAlign.Center,
                                 )
                             }

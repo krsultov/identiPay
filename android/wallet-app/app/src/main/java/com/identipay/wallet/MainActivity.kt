@@ -5,9 +5,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -29,6 +31,7 @@ import com.identipay.wallet.navigation.NavGraph
 import com.identipay.wallet.navigation.Route
 import com.identipay.wallet.nfc.PassportReader
 import com.identipay.wallet.ui.common.BiometricHelper
+import com.identipay.wallet.ui.common.IdentipayLogoMark
 import com.identipay.wallet.ui.theme.IdentipayWalletTheme
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
@@ -91,10 +94,18 @@ class MainActivity : FragmentActivity() {
                             verticalArrangement = Arrangement.Center,
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            Text(
-                                text = "Identipay",
-                                style = MaterialTheme.typography.headlineLarge,
+                            IdentipayLogoMark(
+                                size = 48.dp,
+                                color = MaterialTheme.colorScheme.onBackground,
                             )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "identiPay",
+                                    style = MaterialTheme.typography.headlineLarge,
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                )
+                            }
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 text = "Wallet locked",

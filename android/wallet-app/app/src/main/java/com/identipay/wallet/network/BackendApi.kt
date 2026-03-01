@@ -143,6 +143,16 @@ data class SubmitTxRequest(val txBytes: String, val senderSignature: String)
 @Serializable
 data class SubmitTxResponse(val txDigest: String)
 
+// ── Merchant lookup types ──
+
+@Serializable
+data class MerchantLookup(
+    val name: String,
+    val publicKey: String,
+    val suiAddress: String,
+    val did: String,
+)
+
 // ── Commerce proposal types (matching backend types/proposal.ts) ──
 
 @Serializable
@@ -274,6 +284,18 @@ class BackendApi @Inject constructor(
      */
     suspend fun getPayRequest(requestId: String): PayRequestDetail {
         return httpClient.get("pay-requests/$requestId").body()
+    }
+
+    /**
+     * Look up a merchant by their Sui address.
+     * GET /merchants/by-address/:suiAddress
+     */
+    suspend fun lookupMerchantByAddress(suiAddress: String): MerchantLookup? {
+        return try {
+            httpClient.get("merchants/by-address/$suiAddress").body<MerchantLookup>()
+        } catch (e: Exception) {
+            null
+        }
     }
 
     /**

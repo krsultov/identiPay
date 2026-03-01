@@ -10,6 +10,27 @@ import type { SuiService } from "../services/sui.service.ts";
 export function merchantRoutes(deps: { db: Db; suiService: SuiService }) {
   const app = new Hono();
 
+  // GET /by-address/:suiAddress -- public lookup of merchant info by Sui address
+  app.get("/by-address/:suiAddress", async (c) => {
+    const suiAddress = c.req.param("suiAddress");
+    const [merchant] = await deps.db
+      .select({
+        name: merchants.name,
+        publicKey: merchants.publicKey,
+        suiAddress: merchants.suiAddress,
+        did: merchants.did,
+      })
+      .from(merchants)
+      .where(eq(merchants.suiAddress, suiAddress))
+      .limit(1);
+
+    if (!merchant) {
+      return c.json({ error: "Merchant not found" }, 404);
+    }
+
+    return c.json(merchant);
+  });
+
   // POST /register -- register a new merchant
   app.post("/register", async (c) => {
     const body = await c.req.json();

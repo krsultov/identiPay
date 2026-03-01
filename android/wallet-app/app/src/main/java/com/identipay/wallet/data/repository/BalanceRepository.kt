@@ -88,6 +88,8 @@ data class RecoveredTransaction(
     val merchantName: String? = null,
     val stealthAddress: String,
     val timestamp: Long,
+    val buyerStealthAddress: String? = null,
+    val merchantAddress: String? = null,
 )
 
 @Singleton
@@ -163,12 +165,26 @@ class BalanceRepository @Inject constructor(
                         else -> null
                     }
                 } ?: 0L
+                val buyerStealthAddr = eventJson?.get("buyer_stealth_address")?.let {
+                    when (it) {
+                        is kotlinx.serialization.json.JsonPrimitive -> it.content
+                        else -> null
+                    }
+                }
+                val merchantAddr = eventJson?.get("merchant")?.let {
+                    when (it) {
+                        is kotlinx.serialization.json.JsonPrimitive -> it.content
+                        else -> null
+                    }
+                }
                 return RecoveredTransaction(
                     txDigest = txDigest,
                     type = "commerce",
                     amount = amount,
                     stealthAddress = stealthAddress,
                     timestamp = timestamp,
+                    buyerStealthAddress = buyerStealthAddr,
+                    merchantAddress = merchantAddr,
                 )
             }
 
