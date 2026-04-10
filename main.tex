@@ -23,7 +23,7 @@
 \title{\textbf{identiPay -- The Intent-Based Commerce Protocol}\\
 \large from pull payments to contextual, intent-driven atomic settlement.}
 \author{Krum Sultov}
-\date{\today}
+\date{April 2026}
 
 \lstdefinelanguage{Move}{
   morekeywords={module,fun,public,entry,struct,has,copy,drop,store,acquires,let,mut,if,else,while,return,use,const,friend},
@@ -101,7 +101,7 @@ identiPay breaks this monolith by serving as an \textbf{Abstraction Layer} over 
 \subsection{Separating Authorization from Settlement}
 In the identiPay protocol, the core unit of commerce is the \textbf{Universal Intent Object (UIO)}. The UIO is a cryptographically signed JSON-LD payload that mathematically binds the payer's stealth identity and any required ZK-proofs to a specific set of commercial terms (e.g., ``Transfer 50~EUR value to Merchant DID in exchange for Warranty Object, deliver artifacts to stealth address $A_s$'').
 
-Crucially, the UIO is \emph{rail-agnostic}. The protocol defines how the agreement is negotiated and signed, but does not strictly dictate the underlying pipes used to move the liquidity. identiPay acts as the ``Universal Remote,'' allowing the exact same identity and authorization flow to control disparate settlement engines.
+Crucially, the UIO is \emph{rail-agnostic}. The protocol defines how the agreement is negotiated and signed, but does not strictly dictate the underlying pipes used to move the liquidity. identiPay allows the same identity and authorization flow to control disparate settlement engines.
 
 \subsection{Cross-Rail Interoperability}
 identiPay is introduced in phases. The initial deployment is intentionally narrow: \textbf{USDC settlement on Sui} with full PTB-level atomicity. Cross-rail settlement is added later via an identiPay \textbf{Solver Network} that can fulfill the same signed intent using external liquidity and rails, while the merchant gets their money without having to integrate every source rail the payer might use.
@@ -121,20 +121,28 @@ identiPay is introduced in phases. The initial deployment is intentionally narro
 Strict cryptographic atomicity is only possible when both legs of the transaction exist on the same ledger (Native Sui Mode). When the protocol abstracts settlement across asynchronous rails (e.g., SEPA), strict atomicity degrades. To preserve the user experience, identiPay implements \emph{Economic Atomicity}. When a user authorizes a fiat intent, a Solver immediately fronts the required USDC/Warranty Object on Sui. The Solver absorbs the latency of the external bank rail, capturing a marginal spread for providing instant execution.
 
 \section{Federated Routing \& Resolution}
-Interoperability relies on the custom URI schema: \texttt{URI = did:identipay:<hostname>:<transaction-id>}. Because commercial proposals are too large for QR codes, the URI serves as a routing pointer. When a user scans a QR, the wallet performs a deterministic resolution via an HTTPS GET request to: \texttt{https://<hostname>/api/identipay/v1/intents/<transaction-id>}.
+Interoperability relies on a custom DID method with the following grammar:
+\begin{center}
+\texttt{did:identipay:<hostname>:<transaction-id>}
+\end{center}
+The \texttt{hostname} component identifies the merchant's resolution endpoint (a DNS name matching a Trust Registry entry); the \texttt{transaction-id} is an opaque identifier for a specific commerce proposal. Because proposals are too large for QR codes, the DID serves as a compact routing pointer. When a user scans a QR code, the wallet performs a deterministic resolution via an HTTPS GET request to:
+\begin{center}
+\texttt{https://<hostname>/api/identipay/v1/intents/<transaction-id>}
+\end{center}
 
-To prevent DNS spoofing, wallets cross-reference the resolved \texttt{<hostname>} against a decentralized \textbf{Trust Registry} maintained on the Sui blockchain before any intent is signed.
+\paragraph{Trust Registry verification.}
+Before signing any intent, the wallet cross-references the \texttt{hostname} against a decentralized \textbf{Trust Registry} maintained on the Sui blockchain. Each merchant entry in the Trust Registry contains a verified hostname, the merchant's DID~\cite{did-core}, and the merchant's X25519 public key (used for artifact encryption). Only proposals served from a hostname that matches a registered Trust Registry entry are presented to the user; unregistered or mismatched hostnames cause the wallet to reject the proposal before any signing occurs.
 
 \section{Pillar I: Stealth Identity \& Privacy}
 \subsection{Objective}
 Avoid using IBAN-style identifiers and raw public keys as transaction identifiers in consumer commerce. A na\"ive approach---mapping a human-readable name to a fixed blockchain address---creates a surveillance vector: anyone who learns the name can observe every transaction, every receipt, and every warranty on-chain. The identifier used for routing must be \emph{unlinkable} to the addresses that actually receive value and commerce artifacts.
 
 \subsection{The Stealth Meta-Address Primitive}
-identiPay introduces a \textbf{stealth meta-address} system: a human-readable name (e.g., \texttt{@krum.idpay}) resolves to a pair of cryptographic public keys, \emph{never} to a blockchain address. Every incoming payment or commerce artifact is delivered to a fresh, one-time \emph{stealth address} that only the recipient can detect and spend from. No two transactions share an address. No on-chain address is ever publicly linked to the name.
+identiPay introduces a \textbf{stealth meta-address} system~\cite{buterin-stealth,eip5564}: a human-readable name (e.g., \texttt{@krum.idpay}) resolves to a pair of cryptographic public keys, \emph{never} to a blockchain address. Every incoming payment or commerce artifact is delivered to a fresh, one-time \emph{stealth address} that only the recipient can detect and spend from. No two transactions share an address. No on-chain address is ever publicly linked to the name.
 
 \subsection{Identity Ingestion and Meta-Address Generation}
 \paragraph{Credential ingestion.}
-The wallet ingests a credential via NFC (national eID/passport), QR-mediated issuance, or secure retrieval of an EUDI-aligned Verifiable Credential. identiPay assumes an identity issuance stack consistent with the OpenID for Verifiable Credential Issuance/Presentation (OpenID4VC family).
+The wallet ingests a credential via NFC (national eID/passport~\cite{icao9303}), QR-mediated issuance, or secure retrieval of an EUDI-aligned Verifiable Credential~\cite{vc-data-model,eidas}. identiPay assumes an identity issuance stack consistent with the OpenID for Verifiable Credential Issuance/Presentation (OpenID4VC family)~\cite{oid4vci,oid4vp}.
 
 \paragraph{Key generation.}
 From a master seed, the wallet derives:
@@ -144,17 +152,29 @@ From a master seed, the wallet derives:
 \end{itemize}
 The tuple $(K_{\mathrm{spend}}, K_{\mathrm{view}})$ constitutes the user's \emph{meta-address}.
 
-\paragraph{Identity commitment.}
-The wallet computes a Poseidon hash commitment over the credential fields and a user-chosen salt:
-$$
-C = \mathrm{Poseidon}\big(\mathrm{IssuerCertHash},\; H(\mathrm{DocNumber}),\; H(\mathrm{DOB}),\; \mathrm{Salt}\big).
-$$
-This commitment proves that a real government credential backs the registration, without revealing which one.
+\paragraph{Curve compatibility.}
+Ed25519 operates on the twisted Edwards form of Curve25519~\cite{ed25519}, while X25519 uses the Montgomery form~\cite{curve25519}. The two representations are birationally equivalent: any point on one curve can be mapped to the other via a coordinate transformation. In practice, the wallet converts the X25519 viewing public key $K_{\mathrm{view}}$ to Edwards form before performing point arithmetic, and converts back when invoking X25519-specific routines. All scalar arithmetic in the stealth address protocol is performed modulo $\ell \approx 2^{252}$, the order of the Ed25519 base point $G$.
+
+\paragraph{Identity commitment and anti-Sybil nullifier.}
+The wallet computes two values from the credential fields, where $H$ denotes SHA-256:
+\begin{enumerate}
+  \item A \emph{salted commitment} for privacy:
+  $$
+  C = \mathrm{Poseidon}\big(\mathrm{IssuerCertHash},\; H(\mathrm{DocNumber}),\; H(\mathrm{DOB}),\; \mathrm{Salt}\big).
+  $$
+  The user-chosen salt ensures that the same credential produces distinct commitments across different protocols, preventing cross-platform correlation.
+
+  \item A \emph{deterministic nullifier} for Sybil resistance:
+  $$
+  N = \mathrm{Poseidon}\big(\mathrm{IssuerCertHash},\; H(\mathrm{DocNumber}),\; H(\mathrm{DOB})\big).
+  $$
+  Because $N$ contains no user-chosen randomness, the same credential always produces the same nullifier regardless of salt choice.
+\end{enumerate}
 
 \paragraph{ZK proof of credential validity.}
-Locally, the wallet generates a Groth16 proof attesting:
+Locally, the wallet generates a Groth16~\cite{groth16} proof attesting:
 $$
-\pi_{\mathrm{reg}} \leftarrow \mathrm{Prove}\big(\mathrm{CredentialValid} \land \mathrm{Commitment} = C\big).
+\pi_{\mathrm{reg}} \leftarrow \mathrm{Prove}\big(\mathrm{CredentialValid} \land \mathrm{Commitment} = C \land \mathrm{Nullifier} = N\big).
 $$
 
 \subsection{Name Registration}
@@ -163,10 +183,11 @@ The user selects a human-readable name (e.g., \texttt{krum}). The wallet submits
   \item the chosen name (3--20 characters, alphanumeric and hyphens),
   \item $K_{\mathrm{spend}}$ (Ed25519 public key, 32 bytes),
   \item $K_{\mathrm{view}}$ (X25519 public key, 32 bytes),
-  \item the identity commitment $C$, and
+  \item the identity commitment $C$,
+  \item the anti-Sybil nullifier $N$, and
   \item the Groth16 proof $\pi_{\mathrm{reg}}$.
 \end{itemize}
-The on-chain registry enforces \emph{one commitment per name}: a single government credential can register exactly one name, preventing Sybil attacks. The registry stores \textbf{public keys only}---no Sui address is recorded.
+The on-chain registry enforces \emph{nullifier uniqueness}: since $N$ is deterministic (unsalted), the same government credential always produces the same nullifier and can register exactly one name, preventing Sybil attacks. The salted commitment $C$ provides cross-protocol privacy, while $N$ provides uniqueness within identiPay. The registry stores \textbf{public keys only}---no Sui address is recorded.
 
 \subsection{Stealth Address Protocol}
 \paragraph{Sending to a name.}
@@ -175,9 +196,9 @@ When a sender wishes to pay \texttt{@krum.idpay}, the sender's wallet performs t
   \item Resolve the name from the on-chain registry: $(K_{\mathrm{spend}}, K_{\mathrm{view}})$.
   \item Generate an ephemeral keypair $(r, R = r \cdot G)$.
   \item Compute the ECDH shared secret: $\mathrm{shared} = r \cdot K_{\mathrm{view}}$.
-  \item Derive a scalar: $s = \mathrm{SHA256}(\mathrm{shared} \parallel \texttt{"identipay-stealth-v1"})$.
+  \item Derive a scalar: $s = \mathrm{SHA256}(\mathrm{shared} \parallel \texttt{"identipay-stealth-v1"}) \bmod \ell$, where $\ell$ is the order of the Ed25519 base point.
   \item Compute the stealth public key: $K_{\mathrm{stealth}} = K_{\mathrm{spend}} + s \cdot G$.
-  \item Derive the stealth Sui address: $\mathrm{addr} = \mathrm{BLAKE2b\text{-}256}(0\texttt{x00} \parallel K_{\mathrm{stealth}})$.
+  \item Derive the stealth Sui address~\cite{blake2}: $\mathrm{addr} = \mathrm{BLAKE2b\text{-}256}(0\texttt{x00} \parallel K_{\mathrm{stealth}})$.
   \item Transfer value to $\mathrm{addr}$.
   \item Emit a \texttt{StealthAnnouncement} event containing $R$, a one-byte \emph{view tag} (first byte of $\mathrm{shared}$), and the stealth address.
 \end{enumerate}
@@ -185,12 +206,13 @@ When a sender wishes to pay \texttt{@krum.idpay}, the sender's wallet performs t
 \paragraph{Detecting incoming payments.}
 The recipient's wallet scans \texttt{StealthAnnouncement} events:
 \begin{enumerate}
-  \item Fast-filter by view tag (reduces full ECDH computations by $\sim$256$\times$).
   \item Compute $\mathrm{shared} = k_{\mathrm{view}} \cdot R$ (ECDH with the viewing private key).
+  \item Compare the first byte of $\mathrm{shared}$ with the announced view tag. If they differ, discard this announcement immediately---this eliminates $\sim$255 out of 256 candidates before any further derivation.
   \item Derive $s$ and $K_{\mathrm{stealth}} = K_{\mathrm{spend}} + s \cdot G$.
   \item Check whether $\mathrm{BLAKE2b\text{-}256}(0\texttt{x00} \parallel K_{\mathrm{stealth}})$ matches the announced address.
-  \item If matched, derive the stealth private key: $k_{\mathrm{stealth}} = k_{\mathrm{spend}} + s$.
+  \item If matched, derive the stealth private key: $k_{\mathrm{stealth}} = k_{\mathrm{spend}} + s \pmod{\ell}$.
 \end{enumerate}
+The ECDH scalar multiplication (step~1) is performed for every announcement, but the view tag check (step~2) avoids the costlier downstream steps (scalar derivation, point addition, and address hashing) for $\sim$255/256 of them.
 The recipient can now sign transactions from the stealth address.
 
 \paragraph{Example: peer-to-peer payment.}
@@ -200,7 +222,7 @@ Bob's wallet generates a fresh random scalar $r$ (an ephemeral secret that exist
 
 \emph{Why can't an observer find Alice's other stealth addresses?} The stealth address depends on $r$, which Bob chose at random and which is not published---only $R$ is. Recovering the shared secret from $R$ requires Alice's \emph{private} viewing key $k_{\mathrm{view}}$. A different sender, Carol, would pick a different random $r'$, producing an entirely unrelated stealth address. An observer who sees both transactions sees two unconnected addresses with no on-chain link to \texttt{@alice.idpay} or to each other.
 
-Alice's wallet, running in the background, scans each \texttt{StealthAnnouncement}. It checks the one-byte view tag first (a fast filter that eliminates $\sim$255 out of 256 announcements without any expensive computation). For the remaining candidates, the wallet computes $\mathrm{shared} = k_{\mathrm{view}} \cdot R$. Because $k_{\mathrm{view}} \cdot R = k_{\mathrm{view}} \cdot r \cdot G = r \cdot K_{\mathrm{view}}$, Alice recovers the same shared secret Bob used. She derives the stealth address, confirms it matches, and computes the stealth private key $k_{\mathrm{stealth}} = k_{\mathrm{spend}} + s$. She can now spend the 50~USDC whenever she chooses.
+Alice's wallet, running in the background, scans each \texttt{StealthAnnouncement}. For each, it computes $\mathrm{shared} = k_{\mathrm{view}} \cdot R$ and checks the one-byte view tag---a fast comparison that eliminates $\sim$255 out of 256 announcements before the costlier address derivation steps. Because $k_{\mathrm{view}} \cdot R = k_{\mathrm{view}} \cdot r \cdot G = r \cdot K_{\mathrm{view}}$, Alice recovers the same shared secret Bob used. She derives the stealth address, confirms it matches, and computes the stealth private key $k_{\mathrm{stealth}} = k_{\mathrm{spend}} + s \pmod{\ell}$. She can now spend the 50~USDC whenever she chooses.
 
 \paragraph{Example: merchant checkout.}
 Alice visits a coffee shop and scans a QR code displayed on the merchant's POS terminal. Her wallet resolves the QR URI, retrieves the commerce proposal (items, price, warranty terms), and renders it in plain language: ``Send 5~USDC to CoffeeShop. Receive: receipt.''
@@ -230,12 +252,14 @@ The user generates a Groth16 proof attesting:
 $$
 \pi_{\mathrm{pool}} \leftarrow \mathrm{Prove}\Big(
   \exists\; \mathrm{note} \in \mathrm{MerkleTree}:\;
-  \mathrm{note.amount} \geq W
+  \mathrm{note.amount} = W + W_{\mathrm{change}}
   \;\land\;
   \mathrm{nullifier} = \mathrm{Poseidon}(c, \mathrm{ownerKey})
+  \;\land\;
+  c_{\mathrm{change}} = \mathrm{Poseidon}(W_{\mathrm{change}}, \mathrm{ownerKey}, \mathrm{salt'})
 \Big)
 $$
-where $W$ is the withdrawal amount. The proof reveals the Merkle root, the nullifier (preventing double-spend), the recipient address, and the withdrawal amount. It does \emph{not} reveal which note was spent or who owns it. The contract verifies the proof via \texttt{sui::groth16}, checks the nullifier against a spent-set, transfers $W$ to the recipient, and (if change exists) inserts a new note commitment for the remainder.
+where $W$ is the withdrawal amount and $W_{\mathrm{change}}$ is the change returned as a new note commitment $c_{\mathrm{change}}$. The proof reveals the Merkle root, the nullifier (preventing double-spend), the recipient address, the withdrawal amount, and the change commitment. It does \emph{not} reveal which note was spent or who owns it. The contract verifies the proof via \texttt{sui::groth16}, checks the nullifier against a spent-set, transfers $W$ to the recipient, and (if change exists) inserts a new note commitment for the remainder.
 
 \paragraph{What an observer sees.}
 USDC flows into the pool from various addresses. USDC flows out to various addresses. The ZK proof guarantees no inflation and no double-spending, but the observer cannot determine which deposit funded which withdrawal.
@@ -281,7 +305,7 @@ The proof is bound to the intent hash, preventing replay. On-chain verification 
 Invert the default control model: merchants do not obtain a standing ability to pull funds. They can only publish \emph{proposals}. The payer retains a unilateral technical stop mechanism by simply not producing a signed acceptance.
 
 \subsection{Proposal object}
-A merchant constructs a structured proposal (canonicalized JSON-LD or equivalent typed data), containing at minimum:
+A merchant constructs a structured proposal (canonicalized JSON-LD~\cite{jsonld} or equivalent typed data), containing at minimum:
 \begin{center}
 \begin{tabular}{@{}ll@{}}
 \toprule
@@ -289,7 +313,7 @@ Field & Semantics \\
 \midrule
 \texttt{sku} & item identifier(s), quantity, unit price \\
 \texttt{amount} & exact payment amount and currency (e.g., USDC/EURC) \\
-\texttt{merchant\_did} & merchant identity (DID, certificate chain, or on-chain object) \\
+\texttt{merchant\_did} & merchant identity (DID~\cite{did-core}, certificate chain, or on-chain object) \\
 \texttt{deliverable} & warranty/receipt/invoice metadata schema version \\
 \texttt{expiry} & last valid acceptance time \\
 \texttt{constraints} & policy (e.g., age-gate, region restriction) \\
@@ -311,7 +335,7 @@ $$
 \qquad m \leftarrow \mathrm{Intent} \parallel H(\mathrm{tx}),
 \qquad \sigma \leftarrow \mathrm{Sign}_{sk}(m).
 $$
-On-chain execution is accepted if and only if the chain verifies $\\sigma$ over $m$ and then executes the PTB contained in $\mathrm{tx}$.
+On-chain execution is accepted if and only if the chain verifies $\sigma$ over $m$ and then executes the PTB contained in $\mathrm{tx}$.
 
 \subsection{Revocation and ``kill switch''}
 Because authorizations are expressed as \emph{explicit acceptances} and optional scoped delegate capabilities (per-merchant/per-subscription), the payer can revoke a delegate key or disable a spending policy. This converts cancellation from a social process into a deterministic state transition.
@@ -321,7 +345,7 @@ Because authorizations are expressed as \emph{explicit acceptances} and optional
 Couple value transfer and commerce artifacts as a single atomic outcome: it must be impossible to pay without receiving the warranty/receipt (or vice versa). The protocol should not rely on off-chain promises.
 
 \subsection{Sui PTBs as the settlement layer}
-Sui's object-centric model and programmable transaction blocks enable multi-step, multi-object transactions that either succeed entirely or fail entirely. identiPay uses PTBs to enforce conditional exchange among:
+Sui's object-centric model~\cite{sui} and programmable transaction blocks enable multi-step, multi-object transactions that either succeed entirely or fail entirely. identiPay uses PTBs to enforce conditional exchange among:
 \begin{itemize}
   \item a payment coin object (e.g., \texttt{Coin<USDC>}),
   \item a commerce artifact object (warranty/receipt/invoice), and
@@ -410,7 +434,9 @@ The wallet then performs ECDH with the merchant's public key $K_{\mathrm{merchan
 $$
 \mathrm{shared} = e \cdot K_{\mathrm{merchant}}, \qquad K_{\mathrm{enc}} = \mathrm{SHA256}\big(\mathrm{shared} \parallel \texttt{"identipay-artifact-enc-v1"}\big).
 $$
-The wallet encrypts the artifact payload (items, amounts, warranty terms) using AES-256-GCM with $K_{\mathrm{enc}}$ and a random 12-byte nonce. The on-chain artifact stores the ciphertext, the nonce, and the ephemeral public point $E$.
+The wallet encrypts the artifact payload (items, amounts, warranty terms) using AES-256-GCM~\cite{gcm} with $K_{\mathrm{enc}}$ and a random 12-byte nonce. The on-chain artifact stores the ciphertext, the nonce, and the ephemeral public point $E$.
+
+Note that $e$ is deterministic per stealth address: multiple artifacts delivered to the same address within a single PTB share the same ephemeral key $E$. This does not introduce additional linkability, as the artifacts are already visibly co-located at the same stealth address within the same atomic transaction.
 
 \paragraph{Decryption by the buyer.}
 The buyer holds $k_{\mathrm{stealth}}$ and can recompute $e$, then $K_{\mathrm{enc}}$, and decrypt. No additional state needs to be stored---the stealth private key is sufficient.
@@ -456,7 +482,7 @@ Transactions can carry structured metadata (VAT category, merchant identifier, c
 
 \section{Integration Strategy}
 \subsection{Principle}
-``Web2 in the front, Web3 in the back'': adoption should not require merchants to rewrite core commerce stacks in Move.
+Adoption should not require merchants to rewrite core commerce stacks in Move. The integration surface is designed so that existing Web2 commerce infrastructure remains unchanged; only the settlement and artifact layer operates on-chain.
 
 \subsection{Implementation sketch}
 \begin{itemize}
@@ -466,7 +492,7 @@ Transactions can carry structured metadata (VAT category, merchant identifier, c
 \end{itemize}
 
 \subsection{Implementation Strategy: The Sui-First MVP}
-While the protocol is rail-agnostic, the Minimum Viable Product (MVP) is natively anchored on the Sui Blockchain utilizing the USDC Corridor. Sui's object-centric architecture and PTBs provide the only Web3 environment where ``Atomic Contextual Settlement'' can be executed natively without third-party solvers. A minimal \texttt{identipay::settlement} Move module accepts a \texttt{Coin<USDC>}, transfers it to the merchant, and atomically mints a \texttt{ReceiptObject} delivered to the buyer's one-time stealth address---unlinkable to their registered name.
+While the protocol is rail-agnostic, the Minimum Viable Product (MVP) is natively anchored on the Sui Blockchain utilizing the USDC Corridor. Sui's object-centric architecture and PTBs provide a particularly natural environment for atomic contextual settlement, as multi-object, multi-step transactions are a first-class primitive rather than a pattern built atop lower-level mechanisms. A minimal \texttt{identipay::settlement} Move module accepts a \texttt{Coin<USDC>}, transfers it to the merchant, and atomically mints a \texttt{ReceiptObject} delivered to the buyer's one-time stealth address---unlinkable to their registered name.
 
 
 \section{Threat Model and Security Considerations}
@@ -488,9 +514,134 @@ While the protocol is rail-agnostic, the Minimum Viable Product (MVP) is nativel
 \end{enumerate}
 
 \subsection{Residual risks}
+\paragraph{Trusted setup.}
+identiPay uses Groth16~\cite{groth16} for three distinct circuits (identity registration, eligibility predicates, shielded pool withdrawal). Each requires a circuit-specific trusted setup ceremony to generate the common reference string (CRS). If the toxic waste from the setup is not properly destroyed, a party holding it could forge proofs. In production, each circuit should undergo a multi-party computation (MPC) ceremony with a sufficient number of independent participants, such that security holds if at least one participant is honest. Migration to transparent proof systems (e.g., Plonk with a universal SRS, or STARKs) is a potential future direction that would eliminate per-circuit trust assumptions.
+
+\paragraph{Wallet compromise.}
 Wallet compromise remains a critical risk. Binding the wallet to an EUDI-aligned credential can strengthen onboarding, recovery, and compliance, but it does not prevent an attacker who gains control of the signing keys or device from authorizing transactions. identiPay reduces the attack surface by making prompts human-auditable, but endpoint security is not eliminated. Additionally, off-chain off-ramp processes introduce regulated counterparty risk and are intentionally out of protocol scope.
 
+\section{Related Work}
+
+\paragraph{Stealth addresses.}
+The concept of stealth addresses originates in Bitcoin privacy proposals and was systematized by Buterin~\cite{buterin-stealth}, who described a dual-key scheme using separate spending and viewing keys. EIP-5564~\cite{eip5564} formalizes stealth addresses for Ethereum with deployed implementations on Ethereum and L2 networks. identiPay adapts the dual-key stealth address primitive to Sui's object-centric model, extends it with human-readable name registration backed by zero-knowledge identity proofs, and integrates stealth addresses into a full commerce protocol rather than treating them as a standalone privacy mechanism.
+
+\paragraph{Privacy-preserving payments.}
+Zerocash~\cite{zerocash} introduced shielded pools with zero-knowledge proofs for fully private transactions on a dedicated blockchain. Tornado Cash~\cite{tornadocash} applied a similar deposit/withdraw model to Ethereum using Groth16 proofs over a Merkle tree of note commitments. identiPay's shielded pool draws on these designs but serves a narrower purpose: breaking on-chain linkage during coin merges from stealth addresses, rather than providing general-purpose transaction privacy. The pool is complementary to, not a replacement for, the stealth address layer.
+
+\paragraph{Intent-based protocols.}
+Intent-centric architectures have emerged in several contexts: Anoma~\cite{anoma} proposes a generalized intent machine where users specify desired state predicates, and decentralized exchanges have adopted signed-intent models for order flow with competitive solver fulfillment. identiPay's intent model is domain-specific to commerce: intents encode typed commercial proposals (items, prices, warranty terms, delivery addresses) rather than arbitrary state predicates, and the on-chain execution is deterministic rather than solver-optimized.
+
+\paragraph{Digital identity and verifiable credentials.}
+The W3C Verifiable Credentials Data Model~\cite{vc-data-model} and Decentralized Identifiers~\cite{did-core} provide foundational standards for portable digital identity. The European Digital Identity framework (eIDAS~2.0)~\cite{eidas} mandates government-issued credentials in wallet form. The OpenID for Verifiable Credentials family~\cite{oid4vci,oid4vp} defines issuance and presentation protocols. identiPay builds on these standards for credential ingestion but contributes a payment-native integration: the credential is used to derive cryptographic keys and register a stealth meta-address, rather than merely to present attestations.
+
+\paragraph{Push payments and open banking.}
+The PSD2 directive~\cite{psd2} in Europe and systems such as UPI (India) and PIX (Brazil) have introduced push-payment models at the regulatory and infrastructure level. These systems reverse control at the banking layer but do not provide cryptographic privacy, atomic commerce artifact exchange, or programmable settlement logic. identiPay operates at the protocol layer and is complementary to banking-level push-payment reforms.
+
 \section{Conclusion}
-identiPay is a protocol-level redefinition of commerce settlement. By eliminating pull authority, binding execution to human-auditable intent, delivering value and commerce artifacts to unlinkable stealth addresses, and enforcing atomic exchange of value and context, the system aligns security, privacy, and reconciliation with deterministic on-chain invariants. Human-readable names provide usability; stealth meta-addresses provide privacy; ZK proofs provide selective disclosure. The target is not incremental optimization of payments, but a composable, privacy-preserving commerce layer suitable for sovereign digital identity and programmable money.
+identiPay presents a protocol that restructures the trust assumptions of commerce settlement. By eliminating pull authority, binding execution to human-auditable intent, delivering value and commerce artifacts to unlinkable stealth addresses, and enforcing atomic exchange of value and context, the system aligns security, privacy, and reconciliation with deterministic on-chain invariants. Human-readable names provide usability; stealth meta-addresses provide privacy; ZK proofs provide selective disclosure. The protocol contributes a composable, privacy-preserving commerce layer that integrates sovereign digital identity with programmable settlement.
+
+\begin{thebibliography}{99}
+
+\bibitem{ed25519}
+Bernstein, D.J., Duif, N., Lange, T., Schwabe, P., Yang, B.-Y.
+``High-Speed High-Security Signatures.''
+\textit{Journal of Cryptographic Engineering}, 2(2):77--89, 2012.
+
+\bibitem{curve25519}
+Bernstein, D.J.
+``Curve25519: New Diffie-Hellman Speed Records.''
+In \textit{Public Key Cryptography (PKC)}, LNCS 3958, pp.~207--228. Springer, 2006.
+
+\bibitem{groth16}
+Groth, J.
+``On the Size of Pairing-Based Non-Interactive Arguments.''
+In \textit{EUROCRYPT 2016}, LNCS 9666, pp.~305--326. Springer, 2016.
+
+\bibitem{poseidon}
+Grassi, L., Khovratovich, D., Rechberger, C., Roy, A., Schofnegger, M.
+``Poseidon: A New Hash Function for Zero-Knowledge Proof Systems.''
+In \textit{USENIX Security 2021}, pp.~519--535, 2021.
+
+\bibitem{blake2}
+Aumasson, J.-P., Neves, S., Wilcox-O'Hearn, Z., Winnerlein, C.
+``BLAKE2: Simpler, Smaller, Fast as MD5.''
+In \textit{ACNS 2013}, LNCS 7954, pp.~119--135. Springer, 2013.
+
+\bibitem{gcm}
+Dworkin, M.
+``Recommendation for Block Cipher Modes of Operation: Galois/Counter Mode (GCM) and GMAC.''
+NIST Special Publication 800-38D, 2007.
+
+\bibitem{buterin-stealth}
+Buterin, V.
+``An Incomplete Guide to Stealth Addresses.''
+\url{https://vitalik.eth.limo/general/2023/01/20/stealth.html}, January 2023.
+
+\bibitem{eip5564}
+Wahrstätter, T., Solomon, M., DiFrancesco, B., Buterin, V.
+``ERC-5564: Stealth Addresses.''
+Ethereum Improvement Proposals, 2022.
+
+\bibitem{zerocash}
+Ben-Sasson, E., Chiesa, A., Garman, C., Green, M., Miers, I., Tromer, E., Virza, M.
+``Zerocash: Decentralized Anonymous Payments from Bitcoin.''
+In \textit{IEEE Symposium on Security and Privacy}, pp.~459--474, 2014.
+
+\bibitem{tornadocash}
+Pertsev, A., Semenov, R., Storm, R.
+``Tornado Cash Privacy Solution.''
+Whitepaper, 2019.
+
+\bibitem{icao9303}
+International Civil Aviation Organization.
+``Doc 9303: Machine Readable Travel Documents.''
+8th edition, 2021.
+
+\bibitem{vc-data-model}
+Sporny, M., Longley, D., Chadwick, D., Herman, I.
+``Verifiable Credentials Data Model v2.0.''
+W3C Recommendation, 2025.
+
+\bibitem{did-core}
+Sporny, M., Longley, D., Sabadello, M., Reed, D., Steele, O., Allen, C.
+``Decentralized Identifiers (DIDs) v1.0.''
+W3C Recommendation, 2022.
+
+\bibitem{eidas}
+European Parliament and Council.
+``Regulation (EU) 2024/1183 amending Regulation (EU) No 910/2014 as regards establishing the European Digital Identity Framework (eIDAS~2.0).''
+\textit{Official Journal of the European Union}, 2024.
+
+\bibitem{oid4vci}
+Lodderstedt, T., Yasuda, K., Looker, T.
+``OpenID for Verifiable Credential Issuance (OpenID4VCI).''
+OpenID Foundation, Draft 15, 2024.
+
+\bibitem{oid4vp}
+Terbu, O., Lodderstedt, T., Yasuda, K., Fett, D., Heenan, J.
+``OpenID for Verifiable Presentations 1.0.''
+OpenID Foundation, 2025.
+
+\bibitem{jsonld}
+Sporny, M., Longley, D., Kellogg, G., Lanthaler, M., Champin, P.-A., Lindström, N.
+``JSON-LD 1.1.''
+W3C Recommendation, 2020.
+
+\bibitem{sui}
+Blackshear, S., Chursin, A., Danezis, G., Kichidis, A., Kokoris-Kogias, L., Li, X., Logan, M., Menon, A., Nowacki, T., Sonnino, A., Williams, B., Zhang, L.
+``Sui Lutris: A Blockchain Combining Broadcast and Consensus.''
+Mysten Labs Technical Report, 2023. arXiv:2310.18042.
+
+\bibitem{anoma}
+Goes, C., Sun Yin, A., Brink, A.
+``Anoma: A Unified Architecture for Full-Stack Decentralised Applications.''
+Whitepaper, 2022.
+
+\bibitem{psd2}
+European Parliament and Council.
+``Directive (EU) 2015/2366 on Payment Services in the Internal Market (PSD2).''
+\textit{Official Journal of the European Union}, 2015.
+
+\end{thebibliography}
 
 \end{document}
